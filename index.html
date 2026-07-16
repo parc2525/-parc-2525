@@ -248,27 +248,33 @@ function Login({onLogin}){
 
 // ===== VUE GAËTAN =====
 function VueGaetan({prets,vhl,tISO,onConfirm}){
-  // Véhicules en prêt actif aujourd'hui
-  const pretsDuJour=[];
-  Object.entries(prets).forEach(([vid,vp])=>{
-    (vp||[]).forEach(pr=>{
-      if(pr.debut<=tISO&&pr.fin>=tISO){
-        const v=vhl.find(x=>x.id===vid);
-        pretsDuJour.push({...pr,vid,modele:v?v.modele:"",parc:v?v.parc:""});
-      }
-    });
-  });
+  const [tab,setTab]=useState("depart"); // "depart" ou "retour"
 
-  // Véhicules avec retour aujourd'hui
-  const retoursAujourdhui=[];
+  // Départs à faire : prêts qui commencent aujourd'hui ou avant, pas encore partis
+  const departsAFaire=[];
   Object.entries(prets).forEach(([vid,vp])=>{
     (vp||[]).forEach(pr=>{
-      if(pr.fin===tISO&&!pretsDuJour.find(p=>p.id===pr.id)){
+      if(pr.debut<=tISO&&!pr.departConfirme){
         const v=vhl.find(x=>x.id===vid);
-        retoursAujourdhui.push({...pr,vid,modele:v?v.modele:"",parc:v?v.parc:""});
+        departsAFaire.push({...pr,vid,modele:v?v.modele:"",parc:v?v.parc:""});
       }
     });
   });
+  departsAFaire.sort((a,b)=>a.debut.localeCompare(b.debut));
+
+  // Retours à faire : prêts déjà partis, se terminant aujourd'hui ou avant, pas encore rentrés
+  const retoursAFaire=[];
+  Object.entries(prets).forEach(([vid,vp])=>{
+    (vp||[]).forEach(pr=>{
+      if(pr.departConfirme&&!pr.retourConfirme&&pr.fin<=tISO){
+        const v=vhl.find(x=>x.id===vid);
+        retoursAFaire.push({...pr,vid,modele:v?v.modele:"",parc:v?v.parc:""});
+      }
+    });
+  });
+  retoursAFaire.sort((a,b)=>a.fin.localeCompare(b.fin));
+
+  const list = tab==="depart" ? departsAFaire : retoursAFaire;
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"#f0f4f8"}}>
@@ -279,82 +285,86 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
         <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
 
+      {/* Onglets Départ / Retour */}
+      <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #e5e7eb"}}>
+        <button onClick={()=>setTab("depart")} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="depart"?"3px solid #0c1a2e":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="depart"?"#0c1a2e":"#9ca3af",cursor:"pointer"}}>
+          🚀 Départs {departsAFaire.length>0&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:10,padding:"1px 7px",fontSize:11,marginLeft:5}}>{departsAFaire.length}</span>}
+        </button>
+        <button onClick={()=>setTab("retour")} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="retour"?"3px solid #16a34a":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="retour"?"#16a34a":"#9ca3af",cursor:"pointer"}}>
+          🏁 Retours {retoursAFaire.length>0&&<span style={{background:"#fee2e2",color:"#991b1b",borderRadius:10,padding:"1px 7px",fontSize:11,marginLeft:5}}>{retoursAFaire.length}</span>}
+        </button>
+      </div>
+
       <div style={{flex:1,overflow:"auto",padding:12,display:"flex",flexDirection:"column",gap:12}}>
 
-        {/* Prêts actifs */}
-        <div style={{fontSize:12,fontWeight:800,color:"#1a3a5c",textTransform:"uppercase",letterSpacing:1}}>
-          🚗 Véhicules en prêt ({pretsDuJour.length})
-        </div>
-
-        {pretsDuJour.length===0&&(
-          <div style={{background:"#fff",borderRadius:12,padding:20,textAlign:"center",color:"#9ca3af",fontSize:13}}>
-            Aucun véhicule en prêt aujourd'hui
+        {list.length===0&&(
+          <div style={{background:"#fff",borderRadius:12,padding:30,textAlign:"center",color:"#9ca3af",fontSize:13}}>
+            {tab==="depart"?"Aucun départ à faire":"Aucun retour à faire"}
           </div>
         )}
 
-        {pretsDuJour.map(pr=>(
+        {list.map(pr=>(
           <div key={pr.id} style={{background:"#fff",borderRadius:12,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:14,color:"#0c1a2e"}}>{pr.vid}</div>
-                <div style={{fontSize:12,color:"#6b7280"}}>{pr.modele} · Parc {pr.parc}</div>
-                <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>👤 {pr.personne}</div>
-                <div style={{fontSize:11,color:"#9ca3af"}}>📅 {pr.debut.split("-").reverse().join("/")} → {pr.fin.split("-").reverse().join("/")}</div>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
-                {pr.departConfirme
-                  ?<span style={{background:"#dcfce7",color:"#166534",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:700}}>✅ Parti</span>
-                  :<span style={{background:"#fef3c7",color:"#92400e",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:700}}>⏳ En attente départ</span>
-                }
-                {pr.retourConfirme
-                  ?<span style={{background:"#dcfce7",color:"#166534",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:700}}>✅ Rentré</span>
-                  :<span style={{background:"#fee2e2",color:"#991b1b",borderRadius:6,padding:"3px 8px",fontSize:10,fontWeight:700}}>⏳ Pas rentré</span>
-                }
-              </div>
+            <div style={{marginBottom:8}}>
+              <div style={{fontWeight:800,fontSize:14,color:"#0c1a2e"}}>{pr.vid}</div>
+              <div style={{fontSize:12,color:"#6b7280"}}>{pr.modele} · Parc {pr.parc}</div>
+              <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>👤 {pr.personne}</div>
+              <div style={{fontSize:11,color:"#9ca3af"}}>📅 {pr.debut.split("-").reverse().join("/")} → {pr.fin.split("-").reverse().join("/")}</div>
+              {pr.siteDepart&&tab==="depart"&&<div style={{fontSize:11,color:"#9ca3af"}}>📍 Site : {pr.siteDepart}</div>}
+              {pr.siteRetour&&tab==="retour"&&<div style={{fontSize:11,color:"#9ca3af"}}>📍 Site : {pr.siteRetour}</div>}
             </div>
-            <div style={{display:"flex",gap:8}}>
-              {!pr.departConfirme&&(
-                <button onClick={()=>onConfirm(pr.vid,pr.id,"depart")}
-                  style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#0c1a2e",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  ✅ Confirmer départ
-                </button>
-              )}
-              {pr.departConfirme&&!pr.retourConfirme&&(
-                <button onClick={()=>onConfirm(pr.vid,pr.id,"retour")}
-                  style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                  ✅ Confirmer retour
-                </button>
-              )}
-              {pr.departConfirme&&pr.retourConfirme&&(
-                <div style={{flex:1,textAlign:"center",color:"#16a34a",fontWeight:700,fontSize:12,padding:"10px"}}>
-                  ✅ Départ et retour confirmés
-                </div>
-              )}
-            </div>
+
+            {tab==="depart"&&(
+              <button onClick={()=>onConfirm(pr.vid,pr.id,"depart")}
+                style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#0c1a2e",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                ✅ Confirmer départ
+              </button>
+            )}
+            {tab==="retour"&&(
+              <button onClick={()=>onConfirm(pr.vid,pr.id,"retour")}
+                style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                ✅ Confirmer retour
+              </button>
+            )}
           </div>
         ))}
 
-        {/* Retours du jour */}
-        {retoursAujourdhui.length>0&&(
-          <>
-            <div style={{fontSize:12,fontWeight:800,color:"#d97706",textTransform:"uppercase",letterSpacing:1,marginTop:8}}>
-              ⚠️ Retours prévus aujourd'hui ({retoursAujourdhui.length})
-            </div>
-            {retoursAujourdhui.map(pr=>(
-              <div key={pr.id} style={{background:"#fffbeb",borderRadius:12,padding:14,border:"1px solid #fcd34d"}}>
-                <div style={{fontWeight:800,fontSize:14,color:"#0c1a2e"}}>{pr.vid}</div>
-                <div style={{fontSize:12,color:"#6b7280"}}>{pr.modele} · 👤 {pr.personne}</div>
-                {!pr.retourConfirme&&(
-                  <button onClick={()=>onConfirm(pr.vid,pr.id,"retour")}
-                    style={{marginTop:8,width:"100%",padding:"10px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    ✅ Confirmer retour
-                  </button>
-                )}
-                {pr.retourConfirme&&<div style={{color:"#16a34a",fontWeight:700,fontSize:12,marginTop:8}}>✅ Retour confirmé</div>}
+        {/* Historique récent avec annulation possible */}
+        <div style={{fontSize:11,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",letterSpacing:1,marginTop:10}}>
+          Confirmations récentes
+        </div>
+        {(()=>{
+          const recents=[];
+          Object.entries(prets).forEach(([vid,vp])=>{
+            (vp||[]).forEach(pr=>{
+              if(tab==="depart"&&pr.departConfirme&&pr.debut<=tISO){
+                const v=vhl.find(x=>x.id===vid);
+                recents.push({...pr,vid,modele:v?v.modele:""});
+              }
+              if(tab==="retour"&&pr.retourConfirme&&pr.fin<=tISO){
+                const v=vhl.find(x=>x.id===vid);
+                recents.push({...pr,vid,modele:v?v.modele:""});
+              }
+            });
+          });
+          recents.sort((a,b)=>(tab==="depart"?b.debut.localeCompare(a.debut):b.fin.localeCompare(a.fin)));
+          const top5=recents.slice(0,5);
+          if(top5.length===0) return <div style={{fontSize:12,color:"#d1d5db",textAlign:"center",padding:10}}>Aucune confirmation récente</div>;
+          return top5.map(pr=>(
+            <div key={pr.id} style={{background:"#f8fafc",borderRadius:10,padding:"10px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:12,color:"#374151"}}>{pr.vid} — {pr.personne}</div>
+                <div style={{fontSize:10,color:"#9ca3af"}}>
+                  {tab==="depart"?`Parti à ${pr.heureDepart||"—"}`:`Rentré à ${pr.heureRetour||"—"}`}
+                </div>
               </div>
-            ))}
-          </>
-        )}
+              <button onClick={()=>onConfirm(pr.vid,pr.id,tab==="depart"?"annuler_depart":"annuler_retour")}
+                style={{background:"#fee2e2",color:"#991b1b",border:"none",borderRadius:6,padding:"5px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                ↩️ Annuler
+              </button>
+            </div>
+          ));
+        })()}
       </div>
     </div>
   );
@@ -428,10 +438,14 @@ function App(){
   function confirmAction(vid, pid, type){
     setPrets(prevPrets=>{
       const vp = prevPrets[vid]||[];
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
       const up = vp.map(p=>{
         if(p.id!==pid) return p;
-        if(type==="depart") return {...p, departConfirme:true, departAt:new Date().toLocaleString("fr-FR")};
-        if(type==="retour") return {...p, retourConfirme:true, retourAt:new Date().toLocaleString("fr-FR")};
+        if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"), heureDepart:hh};
+        if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"), heureRetour:hh};
+        if(type==="annuler_depart") return {...p, departConfirme:false, departAt:null};
+        if(type==="annuler_retour") return {...p, retourConfirme:false, retourAt:null};
         return p;
       });
       const newPrets = {...prevPrets,[vid]:up};
@@ -1017,6 +1031,12 @@ function App(){
                 <button onClick={()=>{confirmAction(modal.vid,modal.pid,"retour");setModal(null);}}
                   style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>
                   ✅ Retour confirmé
+                </button>
+              )}
+              {modal.mode==="edit"&&((prets[modal.vid]||[]).find(p=>p.id===modal.pid)?.retourConfirme)&&(
+                <button onClick={()=>{confirmAction(modal.vid,modal.pid,"annuler_retour");setModal(null);}}
+                  style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#fee2e2",color:"#991b1b",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                  ↩️ Annuler retour confirmé
                 </button>
               )}
               <button onClick={()=>setModal(null)} style={{flex:1,padding:"9px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>Annuler</button>
