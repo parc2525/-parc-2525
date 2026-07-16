@@ -370,13 +370,14 @@ function App(){
   const [vy,setVy]=useState(today.getFullYear());
   const [vm,setVm]=useState(today.getMonth());
   const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({debut:"",fin:"",personne:""});
+  const [form,setForm]=useState({debut:"",fin:"",personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});
   const [addOpen,setAddOpen]=useState(false);
   const [nim,setNim]=useState(""); const [nmo,setNmo]=useState("");
   const [saved,setSaved]=useState(false);
   const [parcActif,setParcActif]=useState("2525");
   const [archived,setArchived]=useState([]);
   const [showArchive,setShowArchive]=useState(false);
+  const [showMouvements,setShowMouvements]=useState(false);
   const [importResult,setImportResult]=useState(null);
   const [srch,setSrch]=useState("");
   const [fParc,setFParc]=useState("TOUS");
@@ -512,8 +513,8 @@ function App(){
   function prevM(){if(vm===0){setVm(11);setVy(y=>y-1);}else setVm(m=>m-1);}
   function nextM(){if(vm===11){setVm(0);setVy(y=>y+1);}else setVm(m=>m+1);}
 
-  function openNew(vid){setForm({debut:tISO,fin:tISO,personne:""});setModal({vid,mode:"new"});}
-  function openEdit(vid,pr,e){e.stopPropagation();setForm({debut:pr.debut,fin:pr.fin,personne:pr.personne});setModal({vid,mode:"edit",pid:pr.id});}
+  function openNew(vid){setForm({debut:tISO,fin:tISO,personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});setModal({vid,mode:"new"});}
+  function openEdit(vid,pr,e){e.stopPropagation();setForm({debut:pr.debut,fin:pr.fin,personne:pr.personne,heureDepart:pr.heureDepart||"",heureRetour:pr.heureRetour||"",kmDepart:pr.kmDepart||"",kmRetour:pr.kmRetour||"",siteDepart:pr.siteDepart||"",siteRetour:pr.siteRetour||""});setModal({vid,mode:"edit",pid:pr.id});}
 
   function savePret(){
     if(!form.debut||!form.fin||!form.personne.trim()||form.fin<form.debut)return;
@@ -648,6 +649,7 @@ function App(){
             <button onClick={nextM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>›</button>
           </div>
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.length})</button>
+          <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
             <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
@@ -924,6 +926,63 @@ function App(){
         </div>
       )}
 
+      {/* MODAL MOUVEMENTS */}
+      {showMouvements&&(()=>{
+        const rows=[];
+        Object.entries(prets).forEach(([vid,vp])=>{
+          const v=vhl.find(x=>x.id===vid);
+          (vp||[]).forEach(pr=>{
+            rows.push({...pr,vid,modele:v?v.modele:"",parc:v?v.parc:""});
+          });
+        });
+        rows.sort((a,b)=>b.debut.localeCompare(a.debut));
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowMouvements(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:1100,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📋 Historique des mouvements ({rows.length})</div>
+                <button onClick={()=>setShowMouvements(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+              {rows.length===0
+                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucun mouvement enregistré</div>
+                : <div style={{overflow:"auto",flex:1}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5}}>
+                      <thead>
+                        <tr>{["Immat","Modèle","Parc","Personne","Départ","H.Départ","Site D.","Km D.","Retour","H.Retour","Site R.","Km R.","Statut"].map(h=>(
+                          <th key={h} style={{padding:"6px 7px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap"}}>{h}</th>
+                        ))}</tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((r,i)=>(
+                          <tr key={i} style={{background:i%2===0?"#fff":"#f9fafb"}}>
+                            <td style={{padding:"5px 7px",fontWeight:700,color:"#0c1a2e",borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"}}>{r.vid}</td>
+                            <td style={{padding:"5px 7px",color:"#1e40af",borderBottom:"1px solid #f1f5f9"}}>{r.modele}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.parc}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.personne}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"}}>{r.debut.split("-").reverse().join("/")}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.heureDepart||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.siteDepart||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",textAlign:"right"}}>{r.kmDepart||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"}}>{r.fin.split("-").reverse().join("/")}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.heureRetour||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.siteRetour||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",textAlign:"right"}}>{r.kmRetour||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>
+                              {r.retourConfirme?<span style={{color:"#16a34a",fontWeight:700}}>✅ Rentré</span>
+                                :r.departConfirme?<span style={{color:"#d97706",fontWeight:700}}>🚗 En cours</span>
+                                :<span style={{color:"#9ca3af"}}>⏳ Prévu</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+              }
+            </div>
+          </div>
+        );
+      })()}
+
       {/* MODAL PRÊT */}
       {modal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setModal(null)}>
@@ -939,6 +998,17 @@ function App(){
               <div><label style={lbl}>📅 Date de départ</label><input type="date" value={form.debut} onChange={e=>setForm(f=>({...f,debut:e.target.value}))} style={inp}/></div>
               <div><label style={lbl}>📅 Date de retour</label><input type="date" value={form.fin} min={form.debut} onChange={e=>setForm(f=>({...f,fin:e.target.value}))} style={inp}/></div>
               <div><label style={lbl}>👤 Personne / Structure</label><input type="text" value={form.personne} onChange={e=>setForm(f=>({...f,personne:e.target.value}))} placeholder="Nom, partenaire…" style={inp} onKeyDown={e=>e.key==="Enter"&&savePret()}/></div>
+              <div style={{borderTop:"1px dashed #e5e7eb",paddingTop:10,marginTop:2}}>
+                <div style={{fontSize:11,fontWeight:800,color:"#6b7280",textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>🚗 Suivi du mouvement (optionnel)</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div><label style={{...lbl,fontSize:10}}>Heure départ</label><input type="time" value={form.heureDepart} onChange={e=>setForm(f=>({...f,heureDepart:e.target.value}))} style={inp}/></div>
+                  <div><label style={{...lbl,fontSize:10}}>Heure retour</label><input type="time" value={form.heureRetour} onChange={e=>setForm(f=>({...f,heureRetour:e.target.value}))} style={inp}/></div>
+                  <div><label style={{...lbl,fontSize:10}}>Km départ</label><input type="number" value={form.kmDepart} onChange={e=>setForm(f=>({...f,kmDepart:e.target.value}))} placeholder="ex: 10000" style={inp}/></div>
+                  <div><label style={{...lbl,fontSize:10}}>Km retour</label><input type="number" value={form.kmRetour} onChange={e=>setForm(f=>({...f,kmRetour:e.target.value}))} placeholder="ex: 10250" style={inp}/></div>
+                  <div><label style={{...lbl,fontSize:10}}>Site départ</label><input type="text" value={form.siteDepart} onChange={e=>setForm(f=>({...f,siteDepart:e.target.value}))} placeholder="ex: A10" style={inp}/></div>
+                  <div><label style={{...lbl,fontSize:10}}>Site retour</label><input type="text" value={form.siteRetour} onChange={e=>setForm(f=>({...f,siteRetour:e.target.value}))} placeholder="ex: D51" style={inp}/></div>
+                </div>
+              </div>
             </div>
             {ok&&<div style={{marginTop:8,background:"#f0fdf4",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {Math.round((parseD(form.fin)-parseD(form.debut))/86400000)+1} jour(s)</div>}
             {form.fin&&form.fin<form.debut&&<div style={{marginTop:8,background:"#fef2f2",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#dc2626",fontWeight:600}}>⚠️ Date retour avant date départ</div>}
