@@ -445,15 +445,23 @@ function App(){
       const pretsParsed = typeof p.prets==="string"?JSON.parse(p.prets):p.prets;
       const hiddenParsed = typeof p.hidden==="string"?JSON.parse(p.hidden):p.hidden;
       const vhlParsed = typeof p.vhl==="string"?JSON.parse(p.vhl):p.vhl;
-      const archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
+      let archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
+      // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
+      if(archivedParsed&&archivedParsed.length){
+        const seen=new Set();
+        archivedParsed = archivedParsed.filter(a=>{ if(seen.has(a.id)) return false; seen.add(a.id); return true; });
+      }
       if(pretsParsed) setPrets(pretsParsed);
       if(hiddenParsed) setHidden(hiddenParsed);
-      if(archivedParsed) setArchived(archivedParsed);
+      setArchived(archivedParsed);
       if(vhlParsed){
+        const archivedIds = new Set(archivedParsed.map(a=>a.id));
         const saved={}; vhlParsed.forEach(v=>{ saved[v.id]=v; });
-        const merged = INIT.map(v=> saved[v.id] ? {...v,...saved[v.id]} : v);
+        // IMPORTANT : on exclut les véhicules archivés de la reconstruction depuis INIT,
+        // sinon ils réapparaissent à chaque synchronisation.
+        const merged = INIT.filter(v=>!archivedIds.has(v.id)).map(v=> saved[v.id] ? {...v,...saved[v.id]} : v);
         const initIds=new Set(INIT.map(v=>v.id));
-        const extras=vhlParsed.filter(v=>!initIds.has(v.id));
+        const extras=vhlParsed.filter(v=>!initIds.has(v.id)&&!archivedIds.has(v.id));
         setVhl([...merged,...extras]);
       }
     }
@@ -519,12 +527,18 @@ function App(){
   function save(v,p,h,a){setVhl(v);setPrets(p);setHidden(h);if(a!==undefined)setArchived(a);persist(v,p,h,a);}
 
   function archiveVhl(id){
-    const v = vhl.find(x=>x.id===id);
-    if(!v) return;
-    const newArchived = [...archived, {...v, archivedAt: new Date().toLocaleDateString("fr-FR")}];
-    const newVhl = vhl.filter(x=>x.id!==id);
-    setArchived(newArchived);
-    save(newVhl, prets, hidden, newArchived);
+    setVhl(prevVhl=>{
+      const v = prevVhl.find(x=>x.id===id);
+      if(!v) return prevVhl; // déjà archivé ou véhicule introuvable : ne rien faire
+      const newVhl = prevVhl.filter(x=>x.id!==id);
+      setArchived(prevArchived=>{
+        if(prevArchived.some(a=>a.id===id)) return prevArchived; // évite les doublons
+        const newArchived = [...prevArchived, {...v, archivedAt: new Date().toLocaleDateString("fr-FR")}];
+        persist(newVhl, prets, hidden, newArchived);
+        return newArchived;
+      });
+      return newVhl;
+    });
   }
 
   function importExcel(file){
