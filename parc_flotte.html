@@ -248,9 +248,22 @@ function Login({onLogin}){
 
 // ===== VUE GAËTAN =====
 function VueGaetan({prets,vhl,tISO,onConfirm}){
-  const [tab,setTab]=useState("depart"); // "depart" ou "retour"
+  const [tab,setTab]=useState("depart");
+  const [expandedId,setExpandedId]=useState(null);
+  const [mf,setMf]=useState({km:"",site:"A10",heure:""});
 
-  // Départs à faire : prêts qui commencent aujourd'hui ou avant, pas encore partis
+  function nowHHMM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
+
+  function startExpand(pr){
+    setExpandedId(pr.id);
+    setMf({km:"",site:"A10",heure:nowHHMM()});
+  }
+  function cancelExpand(){setExpandedId(null);}
+  function validExpand(pr,type){
+    onConfirm(pr.vid,pr.id,type,{km:mf.km,site:mf.site,heure:mf.heure});
+    setExpandedId(null);
+  }
+
   const departsAFaire=[];
   Object.entries(prets).forEach(([vid,vp])=>{
     (vp||[]).forEach(pr=>{
@@ -262,7 +275,6 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
   });
   departsAFaire.sort((a,b)=>a.debut.localeCompare(b.debut));
 
-  // Retours à faire : prêts déjà partis, se terminant aujourd'hui ou avant, pas encore rentrés
   const retoursAFaire=[];
   Object.entries(prets).forEach(([vid,vp])=>{
     (vp||[]).forEach(pr=>{
@@ -275,22 +287,22 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
   retoursAFaire.sort((a,b)=>a.fin.localeCompare(b.fin));
 
   const list = tab==="depart" ? departsAFaire : retoursAFaire;
+  const inpMini={width:"100%",padding:"8px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",fontSize:13,outline:"none",fontFamily:"inherit"};
+  const lblMini={fontSize:10,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:0.3,display:"block",marginBottom:3};
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:"#f0f4f8"}}>
-      {/* Header */}
       <div style={{background:"linear-gradient(135deg,#0c1a2e,#1a3a5c)",padding:"14px 16px"}}>
         <div style={{fontSize:9,color:"#64748b",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>PARC 2525</div>
         <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>👋 Bonjour Gaëtan</div>
         <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{new Date().toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"})}</div>
       </div>
 
-      {/* Onglets Départ / Retour */}
       <div style={{display:"flex",background:"#fff",borderBottom:"1px solid #e5e7eb"}}>
-        <button onClick={()=>setTab("depart")} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="depart"?"3px solid #0c1a2e":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="depart"?"#0c1a2e":"#9ca3af",cursor:"pointer"}}>
+        <button onClick={()=>{setTab("depart");setExpandedId(null);}} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="depart"?"3px solid #0c1a2e":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="depart"?"#0c1a2e":"#9ca3af",cursor:"pointer"}}>
           🚀 Départs {departsAFaire.length>0&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:10,padding:"1px 7px",fontSize:11,marginLeft:5}}>{departsAFaire.length}</span>}
         </button>
-        <button onClick={()=>setTab("retour")} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="retour"?"3px solid #16a34a":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="retour"?"#16a34a":"#9ca3af",cursor:"pointer"}}>
+        <button onClick={()=>{setTab("retour");setExpandedId(null);}} style={{flex:1,padding:"12px",border:"none",background:"none",borderBottom:tab==="retour"?"3px solid #16a34a":"3px solid transparent",fontWeight:800,fontSize:13,color:tab==="retour"?"#16a34a":"#9ca3af",cursor:"pointer"}}>
           🏁 Retours {retoursAFaire.length>0&&<span style={{background:"#fee2e2",color:"#991b1b",borderRadius:10,padding:"1px 7px",fontSize:11,marginLeft:5}}>{retoursAFaire.length}</span>}
         </button>
       </div>
@@ -310,26 +322,56 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
               <div style={{fontSize:12,color:"#6b7280"}}>{pr.modele} · Parc {pr.parc}</div>
               <div style={{fontSize:11,color:"#9ca3af",marginTop:2}}>👤 {pr.personne}</div>
               <div style={{fontSize:11,color:"#9ca3af"}}>📅 {pr.debut.split("-").reverse().join("/")} → {pr.fin.split("-").reverse().join("/")}</div>
-              {pr.siteDepart&&tab==="depart"&&<div style={{fontSize:11,color:"#9ca3af"}}>📍 Site : {pr.siteDepart}</div>}
-              {pr.siteRetour&&tab==="retour"&&<div style={{fontSize:11,color:"#9ca3af"}}>📍 Site : {pr.siteRetour}</div>}
             </div>
 
-            {tab==="depart"&&(
-              <button onClick={()=>onConfirm(pr.vid,pr.id,"depart")}
+            {expandedId!==pr.id&&tab==="depart"&&(
+              <button onClick={()=>startExpand(pr)}
                 style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#0c1a2e",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                 ✅ Confirmer départ
               </button>
             )}
-            {tab==="retour"&&(
-              <button onClick={()=>onConfirm(pr.vid,pr.id,"retour")}
+            {expandedId!==pr.id&&tab==="retour"&&(
+              <button onClick={()=>startExpand(pr)}
                 style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
                 ✅ Confirmer retour
               </button>
             )}
+
+            {expandedId===pr.id&&(
+              <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginTop:4}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>
+                    <label style={lblMini}>Kilométrage</label>
+                    <input type="number" inputMode="numeric" value={mf.km} onChange={e=>setMf(f=>({...f,km:e.target.value}))} placeholder="ex: 10250" style={inpMini} autoFocus/>
+                  </div>
+                  <div>
+                    <label style={lblMini}>Heure</label>
+                    <input type="time" value={mf.heure} onChange={e=>setMf(f=>({...f,heure:e.target.value}))} style={inpMini}/>
+                  </div>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={lblMini}>Site</label>
+                  <div style={{display:"flex",gap:6}}>
+                    {["A10","D51"].map(s=>(
+                      <button key={s} onClick={()=>setMf(f=>({...f,site:s}))}
+                        style={{flex:1,padding:"9px",borderRadius:7,border:mf.site===s?"2px solid #0c1a2e":"1.5px solid #e5e7eb",background:mf.site===s?"#0c1a2e":"#fff",color:mf.site===s?"#fff":"#374151",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                        📍 {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={cancelExpand} style={{flex:1,padding:"10px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",color:"#374151",fontWeight:600,fontSize:12,cursor:"pointer"}}>Annuler</button>
+                  <button onClick={()=>validExpand(pr,tab==="depart"?"depart":"retour")}
+                    style={{flex:2,padding:"10px",borderRadius:8,border:"none",background:tab==="depart"?"#0c1a2e":"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    ✅ Valider {tab==="depart"?"le départ":"le retour"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
 
-        {/* Historique récent avec annulation possible */}
         <div style={{fontSize:11,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",letterSpacing:1,marginTop:10}}>
           Confirmations récentes
         </div>
@@ -355,11 +397,13 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
               <div>
                 <div style={{fontWeight:700,fontSize:12,color:"#374151"}}>{pr.vid} — {pr.personne}</div>
                 <div style={{fontSize:10,color:"#9ca3af"}}>
-                  {tab==="depart"?`Parti à ${pr.heureDepart||"—"}`:`Rentré à ${pr.heureRetour||"—"}`}
+                  {tab==="depart"
+                    ?`Parti à ${pr.heureDepart||"—"} · ${pr.kmDepart?pr.kmDepart+" km":"km ?"} · ${pr.siteDepart||"site ?"}`
+                    :`Rentré à ${pr.heureRetour||"—"} · ${pr.kmRetour?pr.kmRetour+" km":"km ?"} · ${pr.siteRetour||"site ?"}`}
                 </div>
               </div>
               <button onClick={()=>onConfirm(pr.vid,pr.id,tab==="depart"?"annuler_depart":"annuler_retour")}
-                style={{background:"#fee2e2",color:"#991b1b",border:"none",borderRadius:6,padding:"5px 9px",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                style={{background:"#fee2e2",color:"#991b1b",border:"none",borderRadius:6,padding:"5px 9px",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0}}>
                 ↩️ Annuler
               </button>
             </div>
@@ -435,15 +479,17 @@ function App(){
     }
   },[]);
 
-  function confirmAction(vid, pid, type){
+  function confirmAction(vid, pid, type, extra){
     setPrets(prevPrets=>{
       const vp = prevPrets[vid]||[];
       const now = new Date();
       const hh = String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
       const up = vp.map(p=>{
         if(p.id!==pid) return p;
-        if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"), heureDepart:hh};
-        if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"), heureRetour:hh};
+        if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"),
+          heureDepart:(extra&&extra.heure)||hh, kmDepart:(extra&&extra.km)||p.kmDepart||"", siteDepart:(extra&&extra.site)||p.siteDepart||""};
+        if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"),
+          heureRetour:(extra&&extra.heure)||hh, kmRetour:(extra&&extra.km)||p.kmRetour||"", siteRetour:(extra&&extra.site)||p.siteRetour||""};
         if(type==="annuler_depart") return {...p, departConfirme:false, departAt:null};
         if(type==="annuler_retour") return {...p, retourConfirme:false, retourAt:null};
         return p;
@@ -612,10 +658,12 @@ function App(){
   const uParcs=useMemo(()=>["TOUS",...PARCS_LIST],[]);
   const uEvents=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.event).filter(Boolean))].sort()],[vhl]);
   const uModeles=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.modele).filter(Boolean))].sort()],[vhl]);
+  const uMoteurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.moteur).filter(Boolean))].sort()],[vhl]);
   const uFins=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.fin).filter(Boolean))].sort()],[vhl]);
   const uCouleurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.couleur).filter(Boolean))].sort()],[vhl]);
-  const hasFilter=fEvent!=="TOUS"||fModele!=="TOUS"||fFin!=="TOUS"||fCouleur!=="TOUS"||srch!=="";
-  function resetFilters(){setFEvent("TOUS");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setSrch("");}
+  const [fMoteur,setFMoteur]=useState("TOUS");
+  const hasFilter=fEvent!=="TOUS"||fModele!=="TOUS"||fFin!=="TOUS"||fCouleur!=="TOUS"||fMoteur!=="TOUS"||srch!=="";
+  function resetFilters(){setFEvent("TOUS");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setFMoteur("TOUS");setSrch("");}
 
   const sq=srch.toLowerCase();
   const visible=vhl.filter(v=>{
@@ -625,6 +673,7 @@ function App(){
     if(fModele!=="TOUS"&&v.modele!==fModele)return false;
     if(fFin!=="TOUS"&&v.fin!==fFin)return false;
     if(fCouleur!=="TOUS"&&v.couleur!==fCouleur)return false;
+    if(fMoteur!=="TOUS"&&v.moteur!==fMoteur)return false;
     if(sq&&![v.id,v.modele,v.couleur,v.moteur,v.event,v.parc,v.vin].some(x=>(x||"").toLowerCase().includes(sq)))return false;
     return true;
   });
@@ -776,6 +825,7 @@ function App(){
         {[
           {label:"Event",val:fEvent,set:setFEvent,opts:uEvents},
           {label:"Modèle",val:fModele,set:setFModele,opts:uModeles},
+          {label:"Moteur",val:fMoteur,set:setFMoteur,opts:uMoteurs},
           {label:"Finition",val:fFin,set:setFFin,opts:uFins},
           {label:"Couleur",val:fCouleur,set:setFCouleur,opts:uCouleurs},
         ].map(({label,val,set,opts})=>(
@@ -1027,6 +1077,12 @@ function App(){
             {ok&&<div style={{marginTop:8,background:"#f0fdf4",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {Math.round((parseD(form.fin)-parseD(form.debut))/86400000)+1} jour(s)</div>}
             {form.fin&&form.fin<form.debut&&<div style={{marginTop:8,background:"#fef2f2",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#dc2626",fontWeight:600}}>⚠️ Date retour avant date départ</div>}
             <div style={{display:"flex",gap:6,marginTop:14}}>
+              {modal.mode==="edit"&&(
+                <button onClick={()=>{if(confirm("Cette réservation n'a pas été honorée et va être définitivement supprimée.\n\nConfirmer la suppression ?"))delPret();}}
+                  style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                  🗑️ Non honorée
+                </button>
+              )}
               {modal.mode==="edit"&&!((prets[modal.vid]||[]).find(p=>p.id===modal.pid)?.retourConfirme)&&(
                 <button onClick={()=>{confirmAction(modal.vid,modal.pid,"retour");setModal(null);}}
                   style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>
