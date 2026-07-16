@@ -250,17 +250,17 @@ function Login({onLogin}){
 function VueGaetan({prets,vhl,tISO,onConfirm}){
   const [tab,setTab]=useState("depart");
   const [expandedId,setExpandedId]=useState(null);
-  const [mf,setMf]=useState({km:"",site:"A10",heure:""});
+  const [mf,setMf]=useState({km:"",site:"A10",heure:"",date:"",commentaire:""});
 
   function nowHHMM(){const d=new Date();return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}
 
   function startExpand(pr){
     setExpandedId(pr.id);
-    setMf({km:"",site:"A10",heure:nowHHMM()});
+    setMf({km:"",site:"A10",heure:nowHHMM(),date:tISO,commentaire:""});
   }
   function cancelExpand(){setExpandedId(null);}
   function validExpand(pr,type){
-    onConfirm(pr.vid,pr.id,type,{km:mf.km,site:mf.site,heure:mf.heure});
+    onConfirm(pr.vid,pr.id,type,{km:mf.km,site:mf.site,heure:mf.heure,date:mf.date,commentaire:mf.commentaire});
     setExpandedId(null);
   }
 
@@ -341,12 +341,18 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
               <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginTop:4}}>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
                   <div>
-                    <label style={lblMini}>Kilométrage</label>
-                    <input type="number" inputMode="numeric" value={mf.km} onChange={e=>setMf(f=>({...f,km:e.target.value}))} placeholder="ex: 10250" style={inpMini} autoFocus/>
+                    <label style={lblMini}>Date {tab==="depart"?"départ":"retour"}</label>
+                    <input type="date" value={mf.date} onChange={e=>setMf(f=>({...f,date:e.target.value}))} style={inpMini}/>
                   </div>
                   <div>
                     <label style={lblMini}>Heure</label>
                     <input type="time" value={mf.heure} onChange={e=>setMf(f=>({...f,heure:e.target.value}))} style={inpMini}/>
+                  </div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr",gap:8,marginBottom:8}}>
+                  <div>
+                    <label style={lblMini}>Kilométrage</label>
+                    <input type="number" inputMode="numeric" value={mf.km} onChange={e=>setMf(f=>({...f,km:e.target.value}))} placeholder="ex: 10250" style={inpMini} autoFocus/>
                   </div>
                 </div>
                 <div style={{marginBottom:10}}>
@@ -359,6 +365,11 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
                       </button>
                     ))}
                   </div>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <label style={lblMini}>⚠️ Dégâts / Commentaire (si besoin)</label>
+                  <textarea value={mf.commentaire} onChange={e=>setMf(f=>({...f,commentaire:e.target.value}))} placeholder="ex: rayure aile avant droite, pare-choc fissuré…" rows={2}
+                    style={{...inpMini,resize:"vertical",fontFamily:"inherit"}}/>
                 </div>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={cancelExpand} style={{flex:1,padding:"10px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",color:"#374151",fontWeight:600,fontSize:12,cursor:"pointer"}}>Annuler</button>
@@ -495,9 +506,13 @@ function App(){
       const up = vp.map(p=>{
         if(p.id!==pid) return p;
         if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"),
-          heureDepart:(extra&&extra.heure)||hh, kmDepart:(extra&&extra.km)||p.kmDepart||"", siteDepart:(extra&&extra.site)||p.siteDepart||""};
+          debut:(extra&&extra.date)||p.debut,
+          heureDepart:(extra&&extra.heure)||hh, kmDepart:(extra&&extra.km)||p.kmDepart||"", siteDepart:(extra&&extra.site)||p.siteDepart||"",
+          commentaireDepart:(extra&&extra.commentaire)||p.commentaireDepart||""};
         if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"),
-          heureRetour:(extra&&extra.heure)||hh, kmRetour:(extra&&extra.km)||p.kmRetour||"", siteRetour:(extra&&extra.site)||p.siteRetour||""};
+          fin:(extra&&extra.date)||p.fin,
+          heureRetour:(extra&&extra.heure)||hh, kmRetour:(extra&&extra.km)||p.kmRetour||"", siteRetour:(extra&&extra.site)||p.siteRetour||"",
+          commentaireRetour:(extra&&extra.commentaire)||p.commentaireRetour||""};
         if(type==="annuler_depart") return {...p, departConfirme:false, departAt:null};
         if(type==="annuler_retour") return {...p, retourConfirme:false, retourAt:null};
         return p;
@@ -1026,7 +1041,7 @@ function App(){
                 : <div style={{overflow:"auto",flex:1}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5}}>
                       <thead>
-                        <tr>{["Immat","Modèle","Parc","Personne","Départ","H.Départ","Site D.","Km D.","Retour","H.Retour","Site R.","Km R.","Statut"].map(h=>(
+                        <tr>{["Immat","Modèle","Parc","Personne","Départ","H.Départ","Site D.","Km D.","Retour","H.Retour","Site R.","Km R.","Statut","⚠️ Dégâts"].map(h=>(
                           <th key={h} style={{padding:"6px 7px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap"}}>{h}</th>
                         ))}</tr>
                       </thead>
@@ -1049,6 +1064,13 @@ function App(){
                               {r.retourConfirme?<span style={{color:"#16a34a",fontWeight:700}}>✅ Rentré</span>
                                 :r.departConfirme?<span style={{color:"#d97706",fontWeight:700}}>🚗 En cours</span>
                                 :<span style={{color:"#9ca3af"}}>⏳ Prévu</span>}
+                            </td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",maxWidth:220}}>
+                              {(r.commentaireDepart||r.commentaireRetour)
+                                ? <span style={{background:"#fee2e2",color:"#991b1b",borderRadius:5,padding:"2px 6px",fontWeight:700,display:"inline-block"}}>
+                                    ⚠️ {[r.commentaireDepart&&"D: "+r.commentaireDepart, r.commentaireRetour&&"R: "+r.commentaireRetour].filter(Boolean).join(" · ")}
+                                  </span>
+                                : <span style={{color:"#d1d5db"}}>—</span>}
                             </td>
                           </tr>
                         ))}
