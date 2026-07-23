@@ -450,6 +450,8 @@ function App(){
   const [showMouvements,setShowMouvements]=useState(false);
   const [moveMenuFor,setMoveMenuFor]=useState(null);
   const [compactMode,setCompactMode]=useState(false);
+  const calWrapRef=useRef(null);
+  const [colW,setColW]=useState(COL);
   const [importResult,setImportResult]=useState(null);
   const [srch,setSrch]=useState("");
   const [fParc,setFParc]=useState("TOUS");
@@ -606,6 +608,20 @@ function App(){
   const days=useMemo(()=>Array.from({length:daysIn(vy,vm)},(_,i)=>new Date(vy,vm,i+1)),[vy,vm]);
   const tCol=today.getFullYear()===vy&&today.getMonth()===vm?today.getDate()-1:null;
 
+  useEffect(()=>{
+    function recalc(){
+      const el=calWrapRef.current;
+      if(!el||days.length===0)return;
+      const fixedW=compactMode?CW.immat:FIXED;
+      const avail=el.clientWidth-fixedW;
+      const w=Math.max(COL, Math.floor(avail/days.length));
+      setColW(w);
+    }
+    recalc();
+    window.addEventListener("resize",recalc);
+    return ()=>window.removeEventListener("resize",recalc);
+  },[days.length,compactMode]);
+
   function prevM(){if(vm===0){setVm(11);setVy(y=>y-1);}else setVm(m=>m-1);}
   function nextM(){if(vm===11){setVm(0);setVy(y=>y+1);}else setVm(m=>m+1);}
 
@@ -644,7 +660,7 @@ function App(){
     const ps=parseD(pr.debut), pe=parseD(pr.fin);
     if(!ps||!pe||pe<ms||ps>me)return null;
     const cs=ps<ms?ms:ps, ce=pe>me?me:pe;
-    return{left:(cs.getDate()-1)*COL+1, width:Math.round((ce-cs)/86400000+1)*COL-3};
+    return{left:(cs.getDate()-1)*colW+1, width:Math.round((ce-cs)/86400000+1)*colW-3};
   }
 
   function genContrat(v){
@@ -883,8 +899,8 @@ function App(){
       </div>
 
       {/* TABLEAU */}
-      <div style={{flex:1,overflow:"auto"}}>
-        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:(compactMode?CW.immat:FIXED)+days.length*COL}}>
+      <div ref={calWrapRef} style={{flex:1,overflow:"auto"}}>
+        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:"100%",minWidth:(compactMode?CW.immat:FIXED)+days.length*colW}}>
           <thead>
             <tr>
               <th style={{...ths,width:CW.immat,minWidth:CW.immat}}>Immat</th>
@@ -900,7 +916,7 @@ function App(){
               {days.map((d,i)=>{
                 const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                 return(
-                  <th key={i} style={{...ths,width:COL,minWidth:COL,padding:"3px 0",textAlign:"center",borderRight:"1px solid #f1f5f9",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
+                  <th key={i} style={{...ths,minWidth:colW,padding:"3px 0",textAlign:"center",borderRight:"1px solid #f1f5f9",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
                     <div style={{fontSize:7,color:iT?"#2563eb":"#9ca3af",lineHeight:1}}>{DS[d.getDay()]}</div>
                     <div style={{fontSize:9,fontWeight:iT?800:600,color:iT?"#2563eb":iW?"#bbb":"#374151",lineHeight:1.3}}>{d.getDate()}</div>
                   </th>
@@ -967,7 +983,7 @@ function App(){
                         const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                         return(
                           <div key={i} onClick={()=>openNew(v.id)}
-                            style={{width:COL,minWidth:COL,height:"100%",flexShrink:0,borderRight:"1px solid #f1f5f9",cursor:"pointer",background:iT?"rgba(219,234,254,0.3)":iW?"rgba(0,0,0,0.02)":"transparent"}}
+                            style={{width:colW,minWidth:colW,height:"100%",flexShrink:0,borderRight:"1px solid #f1f5f9",cursor:"pointer",background:iT?"rgba(219,234,254,0.3)":iW?"rgba(0,0,0,0.02)":"transparent"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
                             onMouseLeave={e=>e.currentTarget.style.background=iT?"rgba(219,234,254,0.3)":iW?"rgba(0,0,0,0.02)":"transparent"}/>
                         );
