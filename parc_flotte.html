@@ -190,7 +190,7 @@ function toISO(d){return d.toISOString().slice(0,10)}
 function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:112,modele:100,moteur:88,fin:50,couleur:104,event:52,parc:52,vin:130};
+const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
 const COL=20, ROW=37;
 
