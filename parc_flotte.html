@@ -449,6 +449,7 @@ function App(){
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
   const [moveMenuFor,setMoveMenuFor]=useState(null);
+  const [compactMode,setCompactMode]=useState(false);
   const [importResult,setImportResult]=useState(null);
   const [srch,setSrch]=useState("");
   const [fParc,setFParc]=useState("TOUS");
@@ -748,6 +749,7 @@ function App(){
           </div>
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.length})</button>
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
+          <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
             <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
@@ -882,10 +884,11 @@ function App(){
 
       {/* TABLEAU */}
       <div style={{flex:1,overflow:"auto"}}>
-        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:FIXED+days.length*COL}}>
+        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:(compactMode?CW.immat:FIXED)+days.length*COL}}>
           <thead>
             <tr>
               <th style={{...ths,width:CW.immat,minWidth:CW.immat}}>Immat</th>
+              {!compactMode&&<>
               <th style={{...ths,width:CW.modele,minWidth:CW.modele}}>Modèle</th>
               <th style={{...ths,width:CW.moteur,minWidth:CW.moteur}}>Moteur</th>
               <th style={{...ths,width:CW.fin,minWidth:CW.fin}}>Fin.</th>
@@ -893,6 +896,7 @@ function App(){
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
               <th style={{...ths,width:CW.vin,minWidth:CW.vin,borderRight:"2px solid #cbd5e1"}}>VIN / Châssis</th>
+              </>}
               {days.map((d,i)=>{
                 const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                 return(
@@ -940,6 +944,7 @@ function App(){
                       </div>
                     </div>
                   </td>
+{!compactMode&&<>
                   <td style={{...td,color:"#1e40af",fontWeight:600}}><EditCell value={v.modele} onSave={val=>upField(v.id,"modele",val)}/></td>
                   <td style={{...td,color:"#047857"}}><EditCell value={v.moteur} onSave={val=>upField(v.id,"moteur",val)}/></td>
                   <td style={{...td,color:"#7c3aed",fontWeight:600}}><EditCell value={v.fin} onSave={val=>upField(v.id,"fin",val)}/></td>
@@ -955,6 +960,7 @@ function App(){
                   <td style={{...td,fontFamily:"monospace",fontSize:9,color:"#6b7280",borderRight:"2px solid #cbd5e1"}}>
                     <EditCell value={v.vin} onSave={val=>upField(v.id,"vin",val)} style={{fontFamily:"monospace",fontSize:9}}/>
                   </td>
+                  </>}
                   <td colSpan={days.length} style={{padding:0,height:ROW,background:bg,position:"relative"}}>
                     <div style={{display:"flex",height:"100%",position:"relative"}}>
                       {days.map((d,i)=>{
