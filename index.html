@@ -117,7 +117,6 @@ const INIT = [
   {id:"HJ-018-DN",modele:"JUMPY L2H1",     moteur:"BlueHDi 180 EAT8",  fin:"",      couleur:"BLANC",              event:"En tournage DTM",           parc:"2562",vin:"VF7YCF8F3SG050573"},
   {id:"GV-015-MZ",modele:"BERLINGO",       moteur:"2.0 Blue HDI",      fin:"",      couleur:"GRIS ARTENSE",       event:"",                          parc:"2562",vin:"VF7VLEHTMPZ095787"},
   {id:"HC-334-NR",modele:"C3",             moteur:"1.2 Turbo 100ch",   fin:"MAX",   couleur:"MERCURY GREY",       event:"Chercheurs d'or",           parc:"2562",vin:"VR7CCHPV6ST028839"},
-  {id:"VIN_VR7CGHPY1RT175515",modele:"C3 AIR",         moteur:"MHEV",              fin:"MAX",   couleur:"MONTANA GREEN / TOIT BLANC",event:"FLAIR DE FAMILLE",  parc:"2562",vin:"VR7CGHPY1RT175515"},
   {id:"VIN_VR7CGHPY1RT130798",modele:"C3 AIR",         moteur:"C3 Aircross Hybride 136",fin:"MAX",couleur:"MERCURY GREY / TOIT NOIR",event:"RIP CURL",         parc:"2562",vin:"VR7CGHPY1RT130798"},
   {id:"HA-203-WT",modele:"C3 AIR",         moteur:"C3 Aircross Hybride 136",fin:"MAX",couleur:"MONTANA GREEN / TOIT BLANC",event:"En tournage DNA",parc:"2562",vin:"VR7CGHPY6RT130795"},
   {id:"HA-085-MC",modele:"NEW C4",         moteur:"C4 Hybride 136",    fin:"MAX",   couleur:"MANHATTAN GREEN",    event:"En tournage DNA",           parc:"2562",vin:"VR7BAHPY3RE079788"},
@@ -483,7 +482,6 @@ function App(){
       }
       if(pretsParsed) setPrets(pretsParsed);
       if(hiddenParsed) setHidden(hiddenParsed);
-      setArchived(archivedParsed);
       if(vhlParsed){
         const archivedIds = new Set(archivedParsed.map(a=>a.id));
         const saved={}; vhlParsed.forEach(v=>{ saved[v.id]=v; });
@@ -492,8 +490,20 @@ function App(){
         const merged = INIT.filter(v=>!archivedIds.has(v.id)).map(v=> saved[v.id] ? {...v,...saved[v.id]} : v);
         const initIds=new Set(INIT.map(v=>v.id));
         const extras=vhlParsed.filter(v=>!initIds.has(v.id)&&!archivedIds.has(v.id));
-        setVhl([...merged,...extras]);
+        let finalVhl=[...merged,...extras];
+
+        // Migration ponctuelle : archivage auto des véhicules partis en VO (une seule fois)
+        const VO_VINS=["VR7BDHPY2RE068692","VR7CGHPY1RT130798","VR7BAHPY5RE079789"];
+        const toArchive=finalVhl.filter(v=>VO_VINS.includes(v.vin));
+        if(toArchive.length>0){
+          finalVhl=finalVhl.filter(v=>!VO_VINS.includes(v.vin));
+          archivedParsed=[...archivedParsed,...toArchive.map(v=>({...v,archivedAt:new Date().toLocaleDateString("fr-FR")+" (parti en VO)"}))];
+          persist(finalVhl,pretsParsed||{},hiddenParsed||{},archivedParsed);
+        }
+
+        setVhl(finalVhl);
       }
+      setArchived(archivedParsed);
     }
     // Écoute Firebase en temps réel
     try{
