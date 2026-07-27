@@ -672,9 +672,9 @@ function App(){
     return{left:(cs.getDate()-1)*colW+1, width:Math.round((ce-cs)/86400000+1)*colW-3};
   }
 
-  function genContrat(v){
+  function genContrat(v,prExplicite){
     const vp=prets[v.id]||[];
-    const pr=vp.find(p=>p.debut<=tISO&&p.fin>=tISO)||vp[vp.length-1];
+    const pr=prExplicite||vp.find(p=>p.debut<=tISO&&p.fin>=tISO)||vp[vp.length-1];
     const parts=pr?pr.personne.split(" "):[];
     const prenomBen=(parts[0]||"").toUpperCase()||"__________";
     const nomBen=parts.slice(1).join(" ").toUpperCase()||"__________";
@@ -1168,6 +1168,16 @@ function App(){
             {ok&&<div style={{marginTop:8,background:"#f0fdf4",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {Math.round((parseD(form.fin)-parseD(form.debut))/86400000)+1} jour(s)</div>}
             {form.fin&&form.fin<form.debut&&<div style={{marginTop:8,background:"#fef2f2",borderRadius:7,padding:"6px 10px",fontSize:11,color:"#dc2626",fontWeight:600}}>⚠️ Date retour avant date départ</div>}
             <div style={{display:"flex",gap:6,marginTop:14}}>
+              {modal.mode==="edit"&&(
+                <button onClick={()=>{
+                    const v=vhl.find(x=>x.id===modal.vid);
+                    const pr=(prets[modal.vid]||[]).find(p=>p.id===modal.pid);
+                    if(v&&pr)genContrat(v,pr);
+                  }}
+                  style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#eff6ff",color:"#2563eb",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                  📄 Contrat
+                </button>
+              )}
               {modal.mode==="edit"&&(
                 <button onClick={()=>{if(confirm("Cette réservation n'a pas été honorée et va être définitivement supprimée.\n\nConfirmer la suppression ?"))delPret();}}
                   style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:11,fontWeight:700}}>
