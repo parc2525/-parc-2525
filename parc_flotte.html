@@ -490,18 +490,7 @@ function App(){
         const merged = INIT.filter(v=>!archivedIds.has(v.id)).map(v=> saved[v.id] ? {...v,...saved[v.id]} : v);
         const initIds=new Set(INIT.map(v=>v.id));
         const extras=vhlParsed.filter(v=>!initIds.has(v.id)&&!archivedIds.has(v.id));
-        let finalVhl=[...merged,...extras];
-
-        // Migration ponctuelle : archivage auto des véhicules partis en VO (une seule fois)
-        const VO_VINS=["VR7BDHPY2RE068692","VR7CGHPY1RT130798","VR7BAHPY5RE079789"];
-        const toArchive=finalVhl.filter(v=>VO_VINS.includes(v.vin));
-        if(toArchive.length>0){
-          finalVhl=finalVhl.filter(v=>!VO_VINS.includes(v.vin));
-          archivedParsed=[...archivedParsed,...toArchive.map(v=>({...v,archivedAt:new Date().toLocaleDateString("fr-FR")+" (parti en VO)"}))];
-          persist(finalVhl,pretsParsed||{},hiddenParsed||{},archivedParsed);
-        }
-
-        setVhl(finalVhl);
+        setVhl([...merged,...extras]);
       }
       setArchived(archivedParsed);
     }
