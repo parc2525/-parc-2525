@@ -455,6 +455,8 @@ function App(){
   const [saved,setSaved]=useState(false);
   const [parcActif,setParcActif]=useState("2525");
   const [archived,setArchived]=useState([]);
+  const archivedRef=useRef([]);
+  useEffect(()=>{ archivedRef.current=archived; },[archived]);
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
   const [moveMenuFor,setMoveMenuFor]=useState(null);
@@ -544,7 +546,7 @@ function App(){
   }
 
   function persist(v,p,h,a){
-    const ar = a||archived;
+    const ar = a!==undefined ? a : archivedRef.current;
     try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar}));}catch(_){}
     try{
       db.ref("parc2525").set({
@@ -772,7 +774,7 @@ function App(){
             <span style={{color:"#fff",fontWeight:700,fontSize:11,minWidth:110,textAlign:"center"}}>{MONTHS[vm]} {vy}</span>
             <button onClick={nextM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>›</button>
           </div>
-          <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.length})</button>
+          <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
@@ -1038,30 +1040,32 @@ function App(){
       )}
 
       {/* MODAL ARCHIVE */}
-      {showArchive&&(
+      {showArchive&&(()=>{
+        const archivedDuParc = archived.filter(v=>v.parc===parcActif);
+        return(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowArchive(false)}>
           <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"90%",maxWidth:700,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🗃️ Véhicules archivés ({archived.length})</div>
+              <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🗃️ Véhicules archivés — Parc {parcActif} ({archivedDuParc.length})</div>
               <button onClick={()=>setShowArchive(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
             </div>
-            {archived.length===0
-              ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucun véhicule archivé</div>
+            <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Total archivé tous parcs confondus : {archived.length}</div>
+            {archivedDuParc.length===0
+              ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucun véhicule archivé dans le parc {parcActif}</div>
               : <div style={{overflow:"auto",flex:1}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
                     <thead>
-                      <tr>{["Immat","Modèle","Moteur","Couleur","Parc","VIN","Archivé le"].map(h=>(
+                      <tr>{["Immat","Modèle","Moteur","Couleur","VIN","Archivé le"].map(h=>(
                         <th key={h} style={{padding:"6px 8px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap"}}>{h}</th>
                       ))}</tr>
                     </thead>
                     <tbody>
-                      {archived.map((v,i)=>(
+                      {archivedDuParc.map((v,i)=>(
                         <tr key={i} style={{background:i%2===0?"#fff":"#f9fafb"}}>
                           <td style={{padding:"6px 8px",fontWeight:700,color:"#0c1a2e",borderBottom:"1px solid #f1f5f9"}}>{v.id}</td>
                           <td style={{padding:"6px 8px",color:"#1e40af",borderBottom:"1px solid #f1f5f9"}}>{v.modele}</td>
                           <td style={{padding:"6px 8px",color:"#047857",borderBottom:"1px solid #f1f5f9"}}>{v.moteur}</td>
                           <td style={{padding:"6px 8px",borderBottom:"1px solid #f1f5f9"}}>{v.couleur}</td>
-                          <td style={{padding:"6px 8px",borderBottom:"1px solid #f1f5f9"}}>{v.parc}</td>
                           <td style={{padding:"6px 8px",fontFamily:"monospace",fontSize:9,color:"#6b7280",borderBottom:"1px solid #f1f5f9"}}>{v.vin}</td>
                           <td style={{padding:"6px 8px",color:"#9ca3af",borderBottom:"1px solid #f1f5f9"}}>{v.archivedAt}</td>
                         </tr>
@@ -1072,7 +1076,8 @@ function App(){
             }
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* MODAL MOUVEMENTS */}
       {showMouvements&&(()=>{
