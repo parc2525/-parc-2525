@@ -470,6 +470,7 @@ function App(){
   const [fModele,setFModele]=useState("TOUS");
   const [fFin,setFFin]=useState("TOUS");
   const [fCouleur,setFCouleur]=useState("TOUS");
+  const [fReservation,setFReservation]=useState("TOUS");
 
   useEffect(()=>{
     function applyData(p){
@@ -724,9 +725,14 @@ function App(){
   const uMoteurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.moteur).filter(Boolean))].sort()],[vhl]);
   const uFins=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.fin).filter(Boolean))].sort()],[vhl]);
   const uCouleurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.couleur).filter(Boolean))].sort()],[vhl]);
+  const uReservations=useMemo(()=>{
+    const s=new Set();
+    Object.values(prets).forEach(vp=>(vp||[]).forEach(p=>{ if(p.personne&&p.personne.trim())s.add(p.personne.trim()); }));
+    return ["TOUS",...[...s].sort()];
+  },[prets]);
   const [fMoteur,setFMoteur]=useState("TOUS");
-  const hasFilter=fEvent!==""||fModele!=="TOUS"||fFin!=="TOUS"||fCouleur!=="TOUS"||fMoteur!=="TOUS"||srch!=="";
-  function resetFilters(){setFEvent("");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setFMoteur("TOUS");setSrch("");}
+  const hasFilter=fEvent!==""||fModele!=="TOUS"||fFin!=="TOUS"||fCouleur!=="TOUS"||fMoteur!=="TOUS"||fReservation!=="TOUS"||srch!=="";
+  function resetFilters(){setFEvent("");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setFMoteur("TOUS");setFReservation("TOUS");setSrch("");}
 
   const sq=srch.toLowerCase();
   const visible=vhl.filter(v=>{
@@ -737,6 +743,7 @@ function App(){
     if(fFin!=="TOUS"&&v.fin!==fFin)return false;
     if(fCouleur!=="TOUS"&&v.couleur!==fCouleur)return false;
     if(fMoteur!=="TOUS"&&v.moteur!==fMoteur)return false;
+    if(fReservation!=="TOUS"&&!(prets[v.id]||[]).some(p=>(p.personne||"").trim()===fReservation))return false;
     if(sq&&![v.id,v.modele,v.couleur,v.moteur,v.event,v.parc,v.vin].some(x=>(x||"").toLowerCase().includes(sq)))return false;
     return true;
   });
@@ -897,6 +904,7 @@ function App(){
           {label:"Moteur",val:fMoteur,set:setFMoteur,opts:uMoteurs},
           {label:"Finition",val:fFin,set:setFFin,opts:uFins},
           {label:"Couleur",val:fCouleur,set:setFCouleur,opts:uCouleurs},
+          {label:"Réservation",val:fReservation,set:setFReservation,opts:uReservations},
         ].map(({label,val,set,opts})=>(
           <div key={label} style={{display:"flex",alignItems:"center",gap:3}}>
             <span style={{fontSize:9,color:"#9ca3af",fontWeight:600}}>{label}</span>
