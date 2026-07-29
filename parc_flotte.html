@@ -792,6 +792,7 @@ function App(){
         <span style={{fontSize:11}}><b style={{color:"#0c1a2e"}}>{visible.length}</b> <span style={{color:"#6b7280"}}>vhl</span></span>
         <span style={{fontSize:11}}><b style={{color:"#f59e0b"}}>{enPret}</b> <span style={{color:"#6b7280"}}>en prêt</span></span>
         <span style={{fontSize:11}}><b style={{color:"#16a34a"}}>{visible.length-enPret}</b> <span style={{color:"#6b7280"}}>dispo</span></span>
+        <span onClick={()=>setShowArchive(true)} style={{fontSize:11,cursor:"pointer"}} title="Voir les véhicules archivés de ce parc"><b style={{color:"#d97706"}}>{archived.filter(v=>v.parc===parcActif).length}</b> <span style={{color:"#6b7280",textDecoration:"underline",textDecorationStyle:"dotted"}}>archivés</span></span>
         {hiddenList.length>0&&<span style={{fontSize:10,color:"#9ca3af"}}>{hiddenList.length} masqué(s)</span>}
         <span style={{fontSize:9,color:"#d1d5db",marginLeft:"auto"}}>📄 contrat · 🔀 déplacer parc · ✏️ éditer · ⊗ masquer · 🗃️ archiver</span>
       </div>
@@ -927,7 +928,7 @@ function App(){
               {days.map((d,i)=>{
                 const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                 return(
-                  <th key={i} style={{...ths,minWidth:colW,padding:"3px 0",textAlign:"center",borderRight:"1px solid #f1f5f9",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
+                  <th key={i} style={{...ths,width:colW,minWidth:colW,maxWidth:colW,padding:"3px 0",textAlign:"center",borderRight:"1px solid #f1f5f9",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
                     <div style={{fontSize:7,color:iT?"#2563eb":"#9ca3af",lineHeight:1}}>{DS[d.getDay()]}</div>
                     <div style={{fontSize:9,fontWeight:iT?800:600,color:iT?"#2563eb":iW?"#bbb":"#374151",lineHeight:1.3}}>{d.getDate()}</div>
                   </th>
