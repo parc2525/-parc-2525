@@ -459,6 +459,7 @@ function App(){
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
+  const [filtreGaetan,setFiltreGaetan]=useState(false);
   const [moveMenuFor,setMoveMenuFor]=useState(null);
   const [compactMode,setCompactMode]=useState(false);
   const calWrapRef=useRef(null);
@@ -529,11 +530,13 @@ function App(){
         if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"),
           debut:(extra&&extra.date)||p.debut,
           heureDepart:(extra&&extra.heure)||hh, kmDepart:(extra&&extra.km)||p.kmDepart||"", siteDepart:(extra&&extra.site)||p.siteDepart||"",
-          commentaireDepart:(extra&&extra.commentaire)||p.commentaireDepart||""};
+          commentaireDepart:(extra&&extra.commentaire)||p.commentaireDepart||"",
+          confirmeParDepart: role==="gaetan"?"Gaëtan":"Manager"};
         if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"),
           fin:(extra&&extra.date)||p.fin,
           heureRetour:(extra&&extra.heure)||hh, kmRetour:(extra&&extra.km)||p.kmRetour||"", siteRetour:(extra&&extra.site)||p.siteRetour||"",
-          commentaireRetour:(extra&&extra.commentaire)||p.commentaireRetour||""};
+          commentaireRetour:(extra&&extra.commentaire)||p.commentaireRetour||"",
+          confirmeParRetour: role==="gaetan"?"Gaëtan":"Manager"};
         if(type==="annuler_depart") return {...p, departConfirme:false, departAt:null};
         if(type==="annuler_retour") return {...p, retourConfirme:false, retourAt:null};
         return p;
@@ -1097,24 +1100,31 @@ function App(){
           });
         });
         rows.sort((a,b)=>b.debut.localeCompare(a.debut));
+        const rowsAffichees = filtreGaetan ? rows.filter(r=>r.confirmeParDepart==="Gaëtan"||r.confirmeParRetour==="Gaëtan") : rows;
         return(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowMouvements(false)}>
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:1100,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📋 Historique des mouvements ({rows.length})</div>
-                <button onClick={()=>setShowMouvements(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📋 Historique des mouvements ({rowsAffichees.length})</div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                  <button onClick={()=>setFiltreGaetan(f=>!f)}
+                    style={{background:filtreGaetan?"#1e40af":"#f3f4f6",color:filtreGaetan?"#fff":"#374151",border:"none",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                    👤 {filtreGaetan?"✓ Gaëtan uniquement":"Voir tout"}
+                  </button>
+                  <button onClick={()=>setShowMouvements(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
               </div>
-              {rows.length===0
-                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucun mouvement enregistré</div>
+              {rowsAffichees.length===0
+                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>{filtreGaetan?"Aucune action de Gaëtan enregistrée":"Aucun mouvement enregistré"}</div>
                 : <div style={{overflow:"auto",flex:1}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5}}>
                       <thead>
-                        <tr>{["Immat","Modèle","Parc","Personne","Départ","H.Départ","Site D.","Km D.","Retour","H.Retour","Site R.","Km R.","Statut","⚠️ Dégâts"].map(h=>(
+                        <tr>{["Immat","Modèle","Parc","Personne","Départ","H.Départ","Site D.","Km D.","Confirmé par (D)","Retour","H.Retour","Site R.","Km R.","Confirmé par (R)","Statut","⚠️ Dégâts"].map(h=>(
                           <th key={h} style={{padding:"6px 7px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap"}}>{h}</th>
                         ))}</tr>
                       </thead>
                       <tbody>
-                        {rows.map((r,i)=>(
+                        {rowsAffichees.map((r,i)=>(
                           <tr key={i} style={{background:i%2===0?"#fff":"#f9fafb"}}>
                             <td style={{padding:"5px 7px",fontWeight:700,color:"#0c1a2e",borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"}}>{r.vid}</td>
                             <td style={{padding:"5px 7px",color:"#1e40af",borderBottom:"1px solid #f1f5f9"}}>{r.modele}</td>
@@ -1124,10 +1134,18 @@ function App(){
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.heureDepart||"—"}</td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.siteDepart||"—"}</td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",textAlign:"right"}}>{r.kmDepart||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>
+                              {r.confirmeParDepart==="Gaëtan"?<span style={{background:"#dbeafe",color:"#1e40af",borderRadius:5,padding:"2px 6px",fontWeight:700}}>👤 Gaëtan</span>
+                                :r.confirmeParDepart?<span style={{color:"#6b7280"}}>Manager</span>:"—"}
+                            </td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",whiteSpace:"nowrap"}}>{r.fin.split("-").reverse().join("/")}</td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.heureRetour||"—"}</td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>{r.siteRetour||"—"}</td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9",textAlign:"right"}}>{r.kmRetour||"—"}</td>
+                            <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>
+                              {r.confirmeParRetour==="Gaëtan"?<span style={{background:"#dbeafe",color:"#1e40af",borderRadius:5,padding:"2px 6px",fontWeight:700}}>👤 Gaëtan</span>
+                                :r.confirmeParRetour?<span style={{color:"#6b7280"}}>Manager</span>:"—"}
+                            </td>
                             <td style={{padding:"5px 7px",borderBottom:"1px solid #f1f5f9"}}>
                               {r.retourConfirme?<span style={{color:"#16a34a",fontWeight:700}}>✅ Rentré</span>
                                 :r.departConfirme?<span style={{color:"#d97706",fontWeight:700}}>🚗 En cours</span>
