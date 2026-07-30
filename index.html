@@ -459,6 +459,10 @@ function App(){
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
+  const [showStats,setShowStats]=useState(false);
+  const [statSortCol,setStatSortCol]=useState("totalJours");
+  const [statSortDir,setStatSortDir]=useState("desc");
+  const [statParc,setStatParc]=useState("TOUS");
   const [filtreGaetan,setFiltreGaetan]=useState(false);
   const [mvSrch,setMvSrch]=useState("");
   const [mvParc,setMvParc]=useState("TOUS");
@@ -792,6 +796,7 @@ function App(){
           </div>
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
+          <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
@@ -1231,6 +1236,124 @@ function App(){
               }
             </div>
           </div>
+        );
+      })()}
+
+      {/* MODAL STATISTIQUES */}
+      {showStats&&(()=>{
+        // Calcul des stats par véhicule (actifs + archivés, pour une vision complète de l'historique)
+        const tousVehicules = [...vhl, ...archived.map(v=>({...v,estArchive:true}))];
+        const statsVeh = tousVehicules.map(v=>{
+          const vp = prets[v.id]||[];
+          const nbPrets = vp.length;
+          const totalJours = vp.reduce((s,p)=>{
+            const d=parseD(p.debut), f=parseD(p.fin);
+            if(!d||!f) return s;
+            return s + Math.max(1, Math.round((f-d)/86400000)+1);
+          },0);
+          const dernierPret = vp.length ? vp.map(p=>p.fin).sort().slice(-1)[0] : null;
+          return {...v, nbPrets, totalJours, dernierPret};
+        });
+
+        const statsParcFiltre = statParc==="TOUS" ? statsVeh : statsVeh.filter(v=>v.parc===statParc);
+        const maxStatJours = Math.max(0,...statsParcFiltre.map(v=>v.totalJours));
+        const statsSorted = [...statsParcFiltre].sort((a,b)=>{
+          let av=a[statSortCol], bv=b[statSortCol];
+          if(statSortCol==="dernierPret"){ av=av||""; bv=bv||""; }
+          if(typeof av==="string") return statSortDir==="asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+          return statSortDir==="asc" ? av-bv : bv-av;
+        });
+
+        // Stats agrégées par parc
+        const parcsStats = PARCS_LIST.map(p=>{
+          const vehs = statsVeh.filter(v=>v.parc===p);
+          if(vehs.length===0) return null;
+          const totalPrets = vehs.reduce((s,v)=>s+v.nbPrets,0);
+          const totalJours = vehs.reduce((s,v)=>s+v.totalJours,0);
+          return {parc:p, nbVehicules:vehs.length, totalPrets, totalJours, moyJoursParVeh: vehs.length?Math.round(totalJours/vehs.length):0};
+        }).filter(Boolean).sort((a,b)=>b.totalJours-a.totalJours);
+
+        const maxJours = Math.max(1,...parcsStats.map(p=>p.totalJours));
+
+        function StatTh({label,col}){
+          return (
+            <th onClick={()=>{ if(statSortCol===col) setStatSortDir(d=>d==="asc"?"desc":"asc"); else {setStatSortCol(col);setStatSortDir("desc");} }}
+              style={{padding:"6px 8px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb",whiteSpace:"nowrap",cursor:"pointer",userSelect:"none"}}>
+              {label} {statSortCol===col?(statSortDir==="asc"?"▲":"▼"):""}
+            </th>
+          );
+        }
+
+        return(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowStats(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:1150,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📊 Statistiques d'utilisation du parc</div>
+              <button onClick={()=>setShowStats(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+            </div>
+
+            <div style={{overflow:"auto",flex:1}}>
+              {/* SECTION PARCS */}
+              <div style={{fontSize:12,fontWeight:800,color:"#374151",marginBottom:8}}>🏢 Dynamisme par parc (jours de prêt cumulés)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:20}}>
+                {parcsStats.map(p=>(
+                  <div key={p.parc} style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:60,fontSize:11,fontWeight:700,color:"#1e40af"}}>Parc {p.parc}</div>
+                    <div style={{flex:1,background:"#f1f5f9",borderRadius:6,height:22,position:"relative",overflow:"hidden"}}>
+                      <div style={{width:(p.totalJours/maxJours*100)+"%",height:"100%",background:"linear-gradient(90deg,#2563eb,#1e40af)",borderRadius:6}}/>
+                      <div style={{position:"absolute",top:0,left:8,height:"100%",display:"flex",alignItems:"center",fontSize:10,fontWeight:700,color:p.totalJours/maxJours>0.35?"#fff":"#374151"}}>
+                        {p.totalJours} jours · {p.totalPrets} prêts · {p.nbVehicules} véhicules · {p.moyJoursParVeh} j/véh en moyenne
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* SECTION VEHICULES */}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#374151"}}>🚗 Classement par véhicule (clique sur une colonne pour trier)</div>
+                <select value={statParc} onChange={e=>setStatParc(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}>
+                  {["TOUS",...PARCS_LIST].map(p=><option key={p} value={p}>{p==="TOUS"?"Tous les parcs":"Parc "+p}</option>)}
+                </select>
+              </div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead>
+                  <tr>
+                    <StatTh label="Immat" col="id"/>
+                    <StatTh label="Modèle" col="modele"/>
+                    <StatTh label="Parc" col="parc"/>
+                    <StatTh label="Nb prêts" col="nbPrets"/>
+                    <StatTh label="Jours cumulés" col="totalJours"/>
+                    <StatTh label="Dernier prêt" col="dernierPret"/>
+                    <th style={{padding:"6px 8px",background:"#f8fafc",fontWeight:700,color:"#6b7280",textAlign:"left",borderBottom:"2px solid #e5e7eb"}}>Recommandation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statsSorted.map((v,i)=>{
+                    const peuUtilise = v.nbPrets===0;
+                    const tresUtilise = v.totalJours>=maxStatJours*0.7 && maxStatJours>0;
+                    return(
+                    <tr key={v.id} style={{background:i%2===0?"#fff":"#f9fafb",opacity:v.estArchive?0.5:1}}>
+                      <td style={{padding:"5px 8px",fontWeight:700,color:"#0c1a2e",borderBottom:"1px solid #f1f5f9"}}>{v.id}{v.estArchive&&" 🗃️"}</td>
+                      <td style={{padding:"5px 8px",color:"#1e40af",borderBottom:"1px solid #f1f5f9"}}>{v.modele}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #f1f5f9"}}>{v.parc}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #f1f5f9",textAlign:"right",fontWeight:700}}>{v.nbPrets}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #f1f5f9",textAlign:"right",fontWeight:700}}>{v.totalJours}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #f1f5f9"}}>{v.dernierPret?v.dernierPret.split("-").reverse().join("/"):"—"}</td>
+                      <td style={{padding:"5px 8px",borderBottom:"1px solid #f1f5f9"}}>
+                        {peuUtilise
+                          ? <span style={{background:"#fee2e2",color:"#991b1b",borderRadius:5,padding:"2px 6px",fontWeight:700,fontSize:10}}>⚠️ Jamais utilisé — à réévaluer</span>
+                          : tresUtilise
+                          ? <span style={{background:"#dcfce7",color:"#166534",borderRadius:5,padding:"2px 6px",fontWeight:700,fontSize:10}}>🔥 Fort usage — prioritaire</span>
+                          : <span style={{color:"#9ca3af",fontSize:10}}>Usage normal</span>}
+                      </td>
+                    </tr>
+                  );})}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
         );
       })()}
 
