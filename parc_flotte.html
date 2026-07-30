@@ -539,9 +539,8 @@ function App(){
         return p;
       });
       const newPrets = {...prevPrets,[vid]:up};
-      // Persister immédiatement
-      try{localStorage.setItem(SK,JSON.stringify({vhl,prets:newPrets,hidden}));}catch(_){}
-      try{db.ref("parc2525").set({vhl:JSON.stringify(vhl),prets:JSON.stringify(newPrets),hidden:JSON.stringify(hidden),updatedAt:Date.now()});}catch(_){}
+      // Persister via persist() : inclut toujours archived (via archivedRef), jamais d'écrasement partiel
+      persist(vhl, newPrets, hidden);
       return newPrets;
     });
   }
