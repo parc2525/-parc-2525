@@ -460,6 +460,13 @@ function App(){
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
   const [filtreGaetan,setFiltreGaetan]=useState(false);
+  const [mvSrch,setMvSrch]=useState("");
+  const [mvParc,setMvParc]=useState("TOUS");
+  const [mvStatut,setMvStatut]=useState("TOUS");
+  const [mvDepartFrom,setMvDepartFrom]=useState("");
+  const [mvDepartTo,setMvDepartTo]=useState("");
+  const [mvRetourFrom,setMvRetourFrom]=useState("");
+  const [mvRetourTo,setMvRetourTo]=useState("");
   const [moveMenuFor,setMoveMenuFor]=useState(null);
   const [compactMode,setCompactMode]=useState(false);
   const calWrapRef=useRef(null);
@@ -1100,7 +1107,23 @@ function App(){
           });
         });
         rows.sort((a,b)=>b.debut.localeCompare(a.debut));
-        const rowsAffichees = filtreGaetan ? rows.filter(r=>r.confirmeParDepart==="Gaëtan"||r.confirmeParRetour==="Gaëtan") : rows;
+        const mvSq=mvSrch.toLowerCase();
+        const rowsAffichees = rows.filter(r=>{
+          if(filtreGaetan&&!(r.confirmeParDepart==="Gaëtan"||r.confirmeParRetour==="Gaëtan"))return false;
+          if(mvSrch&&![r.vid,r.modele,r.personne].some(x=>(x||"").toLowerCase().includes(mvSq)))return false;
+          if(mvParc!=="TOUS"&&r.parc!==mvParc)return false;
+          if(mvStatut!=="TOUS"){
+            const st=r.retourConfirme?"Rentré":r.departConfirme?"En cours":"Prévu";
+            if(st!==mvStatut)return false;
+          }
+          if(mvDepartFrom&&r.debut<mvDepartFrom)return false;
+          if(mvDepartTo&&r.debut>mvDepartTo)return false;
+          if(mvRetourFrom&&r.fin<mvRetourFrom)return false;
+          if(mvRetourTo&&r.fin>mvRetourTo)return false;
+          return true;
+        });
+        const mvHasFilter=mvSrch||mvParc!=="TOUS"||mvStatut!=="TOUS"||mvDepartFrom||mvDepartTo||mvRetourFrom||mvRetourTo;
+        function mvReset(){setMvSrch("");setMvParc("TOUS");setMvStatut("TOUS");setMvDepartFrom("");setMvDepartTo("");setMvRetourFrom("");setMvRetourTo("");}
         return(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowMouvements(false)}>
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:1100,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
@@ -1114,8 +1137,50 @@ function App(){
                   <button onClick={()=>setShowMouvements(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
                 </div>
               </div>
+
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"flex-end",marginBottom:14,padding:"10px 12px",background:"#f8fafc",borderRadius:10}}>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>RECHERCHE</label>
+                  <input type="text" value={mvSrch} onChange={e=>setMvSrch(e.target.value)} placeholder="immat, modèle, personne…"
+                    style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11,width:150}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>PARC</label>
+                  <select value={mvParc} onChange={e=>setMvParc(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}>
+                    {["TOUS",...PARCS_LIST].map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>STATUT</label>
+                  <select value={mvStatut} onChange={e=>setMvStatut(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}>
+                    {["TOUS","Prévu","En cours","Rentré"].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>DÉPART — DU</label>
+                  <input type="date" value={mvDepartFrom} onChange={e=>setMvDepartFrom(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>AU</label>
+                  <input type="date" value={mvDepartTo} onChange={e=>setMvDepartTo(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>RETOUR — DU</label>
+                  <input type="date" value={mvRetourFrom} onChange={e=>setMvRetourFrom(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}/>
+                </div>
+                <div>
+                  <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>AU</label>
+                  <input type="date" value={mvRetourTo} onChange={e=>setMvRetourTo(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}/>
+                </div>
+                {mvHasFilter&&(
+                  <button onClick={mvReset} style={{padding:"5px 10px",borderRadius:6,border:"none",background:"#fee2e2",color:"#991b1b",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                    ✕ Réinitialiser
+                  </button>
+                )}
+              </div>
+
               {rowsAffichees.length===0
-                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>{filtreGaetan?"Aucune action de Gaëtan enregistrée":"Aucun mouvement enregistré"}</div>
+                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>{mvHasFilter?"Aucun mouvement ne correspond aux filtres":filtreGaetan?"Aucune action de Gaëtan enregistrée":"Aucun mouvement enregistré"}</div>
                 : <div style={{overflow:"auto",flex:1}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5}}>
                       <thead>
