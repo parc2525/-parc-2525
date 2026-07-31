@@ -539,11 +539,13 @@ function App(){
       const up = vp.map(p=>{
         if(p.id!==pid) return p;
         if(type==="depart") return {...p, departConfirme:true, departAt:now.toLocaleString("fr-FR"),
+          debutPrevu: p.debutPrevu||p.debut,
           debut:(extra&&extra.date)||p.debut,
           heureDepart:(extra&&extra.heure)||hh, kmDepart:(extra&&extra.km)||p.kmDepart||"", siteDepart:(extra&&extra.site)||p.siteDepart||"",
           commentaireDepart:(extra&&extra.commentaire)||p.commentaireDepart||"",
           confirmeParDepart: role==="gaetan"?"Gaëtan":"Manager"};
         if(type==="retour") return {...p, retourConfirme:true, retourAt:now.toLocaleString("fr-FR"),
+          finPrevu: p.finPrevu||p.fin,
           fin:(extra&&extra.date)||p.fin,
           heureRetour:(extra&&extra.heure)||hh, kmRetour:(extra&&extra.km)||p.kmRetour||"", siteRetour:(extra&&extra.site)||p.siteRetour||"",
           commentaireRetour:(extra&&extra.commentaire)||p.commentaireRetour||"",
@@ -878,6 +880,45 @@ function App(){
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ALERTES ÉCARTS DE DATE (Gaëtan) */}
+      {(()=>{
+        const ecarts=[];
+        Object.entries(prets).forEach(([vid,vp])=>{
+          (vp||[]).forEach(pr=>{
+            const v=vhl.find(x=>x.id===vid);
+            if(pr.debutPrevu && pr.debutPrevu!==pr.debut){
+              ecarts.push({id:vid,modele:v?v.modele:'',personne:pr.personne,pid:pr.id,type:"départ",prevu:pr.debutPrevu,reel:pr.debut,par:pr.confirmeParDepart});
+            }
+            if(pr.finPrevu && pr.finPrevu!==pr.fin){
+              ecarts.push({id:vid,modele:v?v.modele:'',personne:pr.personne,pid:pr.id,type:"retour",prevu:pr.finPrevu,reel:pr.fin,par:pr.confirmeParRetour});
+            }
+          });
+        });
+        if(ecarts.length===0) return null;
+        return(
+          <div style={{background:"#eff6ff",borderBottom:"2px solid #93c5fd",padding:"6px 16px",flexShrink:0,display:"flex",alignItems:"flex-start",gap:10}}>
+            <span style={{fontSize:18,flexShrink:0}}>📅</span>
+            <div style={{flex:1}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#1e40af"}}>ÉCARTS DE DATE SIGNALÉS ({ecarts.length})</span>
+              <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:3}}>
+                {ecarts.map((e,i)=>{
+                  const pr=(prets[e.id]||[]).find(p=>p.id===e.pid);
+                  return(
+                    <span key={i} onClick={()=>{
+                        setParcActif(vhl.find(v=>v.id===e.id)?.parc||parcActif);
+                        if(pr){openEdit(e.id,pr,{stopPropagation:()=>{}});}
+                      }}
+                      style={{background:"#dbeafe",color:"#1e40af",borderRadius:5,padding:"2px 8px",fontSize:10,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>
+                      🚗 {e.id} {e.modele} — {e.personne} — {e.type} prévu le {e.prevu.split("-").reverse().join("/")}, réalisé le {e.reel.split("-").reverse().join("/")} (par {e.par||"?"})
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
