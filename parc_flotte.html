@@ -1549,9 +1549,17 @@ function App(){
         const set=(k)=>(e)=>setOcvsForm(f=>({...f,[k]:e.target.value}));
         const inpS={width:"100%",padding:"7px 9px",borderRadius:7,border:"1.5px solid #e5e7eb",fontSize:11,outline:"none",fontFamily:"inherit"};
         const lblS={fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:3,textTransform:"uppercase"};
-        const Field=({k,label,ph})=>(
-          <div><label style={lblS}>{label}</label><input type="text" value={F[k]||""} onChange={set(k)} placeholder={ph||""} style={inpS}/></div>
-        );
+        const REQUIRED=["modeUtilisation","caCommande","parc","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque","nCtrmq"];
+        const Field=({k,label,ph})=>{
+          const req=REQUIRED.includes(k);
+          const vide=req&&!F[k];
+          return(
+            <div><label style={{...lblS,color:req?"#dc2626":lblS.color}}>{label}{req&&" *"}</label>
+              <input type="text" value={F[k]||""} onChange={set(k)} placeholder={ph||""}
+                style={{...inpS,border:vide?"1.5px solid #fca5a5":inpS.border,background:vide?"#fef2f2":"#fff"}}/>
+            </div>
+          );
+        };
         return(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:20}} onClick={()=>setOcvsModal(null)}>
             <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:22,width:"95%",maxWidth:640,maxHeight:"88vh",overflow:"auto",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
@@ -1569,7 +1577,7 @@ function App(){
 
               <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Parc & responsables</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-                <div><label style={lblS}>Parc</label>
+                <div><label style={{...lblS,color:"#dc2626"}}>Parc *</label>
                   <select value={F.parc||parcActif} onChange={set("parc")} style={inpS}>
                     {PARCS_LIST.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
@@ -1603,14 +1611,24 @@ function App(){
                 {ocvsModal.mode==="new"&&<div><label style={lblS}>Date de la commande</label><input type="date" value={F.dateCommande||tISO} onChange={set("dateCommande")} style={inpS}/></div>}
               </div>
 
-              <div style={{display:"flex",gap:8}}>
+              {(()=>{
+                const REQUIRED2=["modeUtilisation","caCommande","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque","nCtrmq"];
+                const ocvsOk = REQUIRED2.every(k=>F[k]&&F[k].trim()); // "parc" toujours valide (valeur par défaut)
+                const manquants = REQUIRED2.filter(k=>!F[k]||!F[k].trim());
+                return(<>
+                {!ocvsOk&&manquants.length>0&&(
+                  <div style={{fontSize:10,color:"#dc2626",marginBottom:8,textAlign:"right"}}>Champs obligatoires manquants : {manquants.length}</div>
+                )}
+                <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setOcvsModal(null)} style={{flex:1,padding:"9px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>Annuler</button>
                 <button onClick={()=>saveOcvsOrder(ocvsModal.mode==="edit"?{...F,id:ocvsModal.id}:F)}
-                  disabled={!F.designationCommerciale}
-                  style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:F.designationCommerciale?"#0c1a2e":"#e5e7eb",color:F.designationCommerciale?"#fff":"#9ca3af",cursor:F.designationCommerciale?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+                  disabled={!ocvsOk}
+                  style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:ocvsOk?"#0c1a2e":"#e5e7eb",color:ocvsOk?"#fff":"#9ca3af",cursor:ocvsOk?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
                   Enregistrer
                 </button>
-              </div>
+                </div>
+                </>);
+              })()}
             </div>
           </div>
         );
