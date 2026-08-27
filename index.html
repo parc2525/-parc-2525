@@ -457,6 +457,12 @@ function App(){
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
+  const [ocvsOrders,setOcvsOrders]=useState([]);
+  const ocvsRef=useRef([]);
+  useEffect(()=>{ ocvsRef.current=ocvsOrders; },[ocvsOrders]);
+  const [showOcvs,setShowOcvs]=useState(false);
+  const [ocvsModal,setOcvsModal]=useState(null);
+  const [ocvsForm,setOcvsForm]=useState({});
   const [showArchive,setShowArchive]=useState(false);
   const [showMouvements,setShowMouvements]=useState(false);
   const [showStats,setShowStats]=useState(false);
@@ -490,6 +496,7 @@ function App(){
       const hiddenParsed = typeof p.hidden==="string"?JSON.parse(p.hidden):p.hidden;
       const vhlParsed = typeof p.vhl==="string"?JSON.parse(p.vhl):p.vhl;
       let archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
+      const ocvsParsed = typeof p.ocvs==="string"?JSON.parse(p.ocvs):(p.ocvs||[]);
       // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
       if(archivedParsed&&archivedParsed.length){
         const seen=new Set();
@@ -508,6 +515,7 @@ function App(){
         setVhl([...merged,...extras]);
       }
       setArchived(archivedParsed);
+      setOcvsOrders(ocvsParsed);
     }
     // Écoute Firebase en temps réel
     try{
@@ -561,15 +569,17 @@ function App(){
     });
   }
 
-  function persist(v,p,h,a){
+  function persist(v,p,h,a,o){
     const ar = a!==undefined ? a : archivedRef.current;
-    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar}));}catch(_){}
+    const oc = o!==undefined ? o : ocvsRef.current;
+    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc}));}catch(_){}
     try{
       db.ref("parc2525").set({
         vhl: JSON.stringify(v),
         prets: JSON.stringify(p),
         hidden: JSON.stringify(h),
         archived: JSON.stringify(ar),
+        ocvs: JSON.stringify(oc),
         updatedAt: Date.now()
       });
     }catch(_){}
@@ -590,6 +600,77 @@ function App(){
       });
       return newVhl;
     });
+  }
+
+  function addMonths(iso,n){
+    const d=parseD(iso);
+    d.setMonth(d.getMonth()+n);
+    return toISO(d);
+  }
+
+  function saveOcvsOrder(data){
+    const dataAvecParc = {...data, parc: data.parc||parcActif};
+    setOcvsOrders(prev=>{
+      let next;
+      if(dataAvecParc.id){
+        next = prev.map(o=>o.id===dataAvecParc.id?{...o,...dataAvecParc}:o);
+      }else{
+        const id=Date.now().toString();
+        const dateCommande = dataAvecParc.dateCommande||tISO;
+        next = [...prev, {
+          ...dataAvecParc, id,
+          dateCommande,
+          dateProductionPrevue: addMonths(dateCommande,2),
+          statut:"commande",
+          dateReception:null, conforme:null, commentaire:"", confirmePar:null,
+        }];
+      }
+      persist(vhl,prets,hidden,undefined,next);
+      return next;
+    });
+    setOcvsModal(null);
+  }
+
+  function updateOcvsStatut(id,statut,extra){
+    setOcvsOrders(prev=>{
+      const next = prev.map(o=>{
+        if(o.id!==id) return o;
+        const up={...o,statut};
+        if(statut==="receptionne"){
+          up.dateReception=tISO;
+          up.conforme=(extra&&extra.conforme)!==undefined?extra.conforme:true;
+          up.confirmePar= role==="gaetan"?"Gaëtan":"Manager";
+          if(extra&&extra.commentaire) up.commentaire=extra.commentaire;
+        }
+        if(statut==="litige"){
+          up.conforme=false;
+          up.dateReception=tISO;
+          up.confirmePar= role==="gaetan"?"Gaëtan":"Manager";
+          if(extra&&extra.commentaire) up.commentaire=extra.commentaire;
+        }
+        return up;
+      });
+      persist(vhl,prets,hidden,undefined,next);
+      return next;
+    });
+  }
+
+  function delOcvsOrder(id){
+    setOcvsOrders(prev=>{
+      const next = prev.filter(o=>o.id!==id);
+      persist(vhl,prets,hidden,undefined,next);
+      return next;
+    });
+  }
+
+  function exportOcvsExcel(order){
+    const headers=["Mode utilisation","CA Commande","VO/NR","base de conception","demande immatriculation","type de sortie de parc prévu","Parc","Sous parc","Demandeur","Lieu de livraison 1ère utilisation","Gestionnaire de ss parc","RPV ou responsable du suivi vh","Désignation commerciale","Marque","Projet","N° de Moyen ou OUPLAOP","N° CTRMQ","Stade vh","Version LCDV","Options","Vin complet ( 17 Caracteres ) pour les commandes de régularisation","1er utilisation","Nom de la flotte","Nom premier utilisateur","parc / ss parc et client final"];
+    const row=[order.modeUtilisation,order.caCommande,order.voNr,order.baseConception,order.demandeImmat,order.typeSortie,order.parc,order.sousParc,order.demandeur,order.lieuLivraison,order.gestionnaireSsParc,order.rpv,order.designationCommerciale,order.marque,order.projet,order.nMoyen,order.nCtrmq,order.stadeVh,order.versionLCDV,order.options,order.vinComplet,order.premiereUtilisation,order.nomFlotte,order.nomPremierUtilisateur,order.parcSsParcClientFinal];
+    const ws=XLSX.utils.aoa_to_sheet([headers,row.map(v=>v||"")]);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Demande OCV");
+    const nomFichier=`Demande ocvs ${order.parc||""} ${order.sousParc||""}.xlsx`.replace(/\s+/g," ").trim();
+    XLSX.writeFile(wb,nomFichier);
   }
 
   function importExcel(file){
@@ -799,6 +880,7 @@ function App(){
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
+          <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
@@ -1395,6 +1477,142 @@ function App(){
             </div>
           </div>
         </div>
+        );
+      })()}
+
+      {/* MODAL OCVS — LISTE */}
+      {showOcvs&&(()=>{
+        const ordersDuParc = ocvsOrders.filter(o=>o.parc===parcActif).sort((a,b)=>b.dateCommande.localeCompare(a.dateCommande));
+        const STATUTS={
+          commande:{label:"📝 Commandé",bg:"#f1f5f9",color:"#374151"},
+          fabrication:{label:"🏭 En fabrication",bg:"#fef3c7",color:"#92400e"},
+          livre:{label:"🚚 Livré",bg:"#dbeafe",color:"#1e40af"},
+          receptionne:{label:"✅ Réceptionné & conforme",bg:"#dcfce7",color:"#166534"},
+          litige:{label:"⚠️ Litige à réception",bg:"#fee2e2",color:"#991b1b"},
+        };
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowOcvs(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:1000,maxHeight:"88vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🏭 Commandes OCVS — Parc {parcActif} ({ordersDuParc.length})</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>{setOcvsForm({});setOcvsModal({mode:"new"});}}
+                    style={{background:"#0c1a2e",color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                    ＋ Nouvelle commande
+                  </button>
+                  <button onClick={()=>setShowOcvs(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              </div>
+
+              {ordersDuParc.length===0
+                ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucune commande OCVS pour ce parc</div>
+                : <div style={{overflow:"auto",flex:1,display:"flex",flexDirection:"column",gap:10}}>
+                    {ordersDuParc.map(o=>{
+                      const st=STATUTS[o.statut]||STATUTS.commande;
+                      const enRetard = o.statut!=="receptionne"&&o.statut!=="litige"&&o.dateProductionPrevue<tISO;
+                      return(
+                        <div key={o.id} style={{border:"1.5px solid "+(enRetard?"#fca5a5":"#e5e7eb"),borderRadius:10,padding:14,background:enRetard?"#fef2f2":"#fff"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                            <div>
+                              <div style={{fontWeight:800,fontSize:13,color:"#0c1a2e"}}>{o.designationCommerciale||"(modèle non renseigné)"} — {o.marque}</div>
+                              <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>Demandeur : {o.demandeur||"—"} · Sous-parc : {o.sousParc||"—"}</div>
+                              <div style={{fontSize:11,color:"#6b7280"}}>Commandé le {o.dateCommande.split("-").reverse().join("/")} · Production prévue le <b style={{color:enRetard?"#dc2626":"#374151"}}>{o.dateProductionPrevue.split("-").reverse().join("/")}</b>{enRetard&&" ⚠️ dépassée"}</div>
+                              {o.dateReception&&<div style={{fontSize:11,color:"#6b7280"}}>Réceptionné le {o.dateReception.split("-").reverse().join("/")} par {o.confirmePar}</div>}
+                              {o.commentaire&&<div style={{fontSize:11,color:"#991b1b",marginTop:3}}>💬 {o.commentaire}</div>}
+                            </div>
+                            <span style={{background:st.bg,color:st.color,borderRadius:6,padding:"3px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{st.label}</span>
+                          </div>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button onClick={()=>exportOcvsExcel(o)} style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,color:"#374151"}}>📥 Générer le bon Excel</button>
+                            <button onClick={()=>{setOcvsForm(o);setOcvsModal({mode:"edit",id:o.id});}} style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,color:"#374151"}}>✏️ Modifier</button>
+                            {o.statut==="commande"&&<button onClick={()=>updateOcvsStatut(o.id,"fabrication")} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#fef3c7",cursor:"pointer",fontSize:10,fontWeight:700,color:"#92400e"}}>🏭 Passer en fabrication</button>}
+                            {o.statut==="fabrication"&&<button onClick={()=>updateOcvsStatut(o.id,"livre")} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#dbeafe",cursor:"pointer",fontSize:10,fontWeight:700,color:"#1e40af"}}>🚚 Marquer livré</button>}
+                            {(o.statut==="livre"||o.statut==="fabrication"||o.statut==="commande")&&<>
+                              <button onClick={()=>{const c=prompt("Commentaire (optionnel) :")||"";updateOcvsStatut(o.id,"receptionne",{conforme:true,commentaire:c});}} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#dcfce7",cursor:"pointer",fontSize:10,fontWeight:700,color:"#166534"}}>✅ Réceptionné conforme</button>
+                              <button onClick={()=>{const c=prompt("Décrire le litige :")||"";if(c)updateOcvsStatut(o.id,"litige",{commentaire:c});}} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#fee2e2",cursor:"pointer",fontSize:10,fontWeight:700,color:"#991b1b"}}>⚠️ Signaler un litige</button>
+                            </>}
+                            <button onClick={()=>{if(confirm("Supprimer définitivement cette commande OCVS ?"))delOcvsOrder(o.id);}} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"none",cursor:"pointer",fontSize:10,fontWeight:700,color:"#d1d5db",marginLeft:"auto"}}>🗑️</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+              }
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL OCVS — FORMULAIRE */}
+      {ocvsModal&&(()=>{
+        const F=ocvsForm;
+        const set=(k)=>(e)=>setOcvsForm(f=>({...f,[k]:e.target.value}));
+        const inpS={width:"100%",padding:"7px 9px",borderRadius:7,border:"1.5px solid #e5e7eb",fontSize:11,outline:"none",fontFamily:"inherit"};
+        const lblS={fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:3,textTransform:"uppercase"};
+        const Field=({k,label,ph})=>(
+          <div><label style={lblS}>{label}</label><input type="text" value={F[k]||""} onChange={set(k)} placeholder={ph||""} style={inpS}/></div>
+        );
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:20}} onClick={()=>setOcvsModal(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:22,width:"95%",maxWidth:640,maxHeight:"88vh",overflow:"auto",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{fontSize:15,fontWeight:800,color:"#0c1a2e",marginBottom:14}}>{ocvsModal.mode==="new"?"＋ Nouvelle commande OCVS":"✏️ Modifier la commande OCVS"}</div>
+
+              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Identification</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                <Field k="modeUtilisation" label="Mode utilisation" ph="ex: E1"/>
+                <Field k="caCommande" label="CA Commande" ph="ex: 01VVX"/>
+                <Field k="voNr" label="VO / NR"/>
+                <Field k="baseConception" label="Base de conception" ph="ex: L0"/>
+                <Field k="demandeImmat" label="Demande immatriculation"/>
+                <Field k="typeSortie" label="Type de sortie de parc prévu"/>
+              </div>
+
+              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Parc & responsables</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                <div><label style={lblS}>Parc</label>
+                  <select value={F.parc||parcActif} onChange={set("parc")} style={inpS}>
+                    {PARCS_LIST.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <Field k="sousParc" label="Sous parc" ph="ex: 5222 FT"/>
+                <Field k="demandeur" label="Demandeur"/>
+                <Field k="lieuLivraison" label="Lieu de livraison 1ère utilisation"/>
+                <Field k="gestionnaireSsParc" label="Gestionnaire de ss parc"/>
+                <Field k="rpv" label="RPV / responsable suivi vh"/>
+              </div>
+
+              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Véhicule</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
+                <Field k="designationCommerciale" label="Désignation commerciale" ph="ex: C3 Aircross"/>
+                <Field k="marque" label="Marque" ph="ex: Citroën"/>
+                <Field k="projet" label="Projet" ph="ex: CC24"/>
+                <Field k="nMoyen" label="N° de Moyen ou OUPLAOP"/>
+                <Field k="nCtrmq" label="N° CTRMQ"/>
+                <Field k="stadeVh" label="Stade vh" ph="ex: EL1"/>
+                <Field k="versionLCDV" label="Version LCDV"/>
+                <Field k="options" label="Options"/>
+              </div>
+
+              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Autres</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                <Field k="vinComplet" label="VIN complet (17 car., régularisation)"/>
+                <Field k="premiereUtilisation" label="1ère utilisation"/>
+                <Field k="nomFlotte" label="Nom de la flotte"/>
+                <Field k="nomPremierUtilisateur" label="Nom premier utilisateur"/>
+                <Field k="parcSsParcClientFinal" label="parc / ss parc et client final"/>
+                {ocvsModal.mode==="new"&&<div><label style={lblS}>Date de la commande</label><input type="date" value={F.dateCommande||tISO} onChange={set("dateCommande")} style={inpS}/></div>}
+              </div>
+
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setOcvsModal(null)} style={{flex:1,padding:"9px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>Annuler</button>
+                <button onClick={()=>saveOcvsOrder(ocvsModal.mode==="edit"?{...F,id:ocvsModal.id}:F)}
+                  disabled={!F.designationCommerciale}
+                  style={{flex:2,padding:"9px",borderRadius:8,border:"none",background:F.designationCommerciale?"#0c1a2e":"#e5e7eb",color:F.designationCommerciale?"#fff":"#9ca3af",cursor:F.designationCommerciale?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+                  Enregistrer
+                </button>
+              </div>
+            </div>
+          </div>
         );
       })()}
 
