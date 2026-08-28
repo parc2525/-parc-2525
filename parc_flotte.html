@@ -1550,9 +1550,11 @@ function App(){
         const set=(k)=>(e)=>setOcvsForm(f=>({...f,[k]:e.target.value}));
         const inpS={width:"100%",padding:"7px 9px",borderRadius:7,border:"1.5px solid #e5e7eb",fontSize:11,outline:"none",fontFamily:"inherit"};
         const lblS={fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:3,textTransform:"uppercase"};
-        const REQUIRED=["modeUtilisation","caCommande","parc","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque","nCtrmq"];
+        const REQUIRED=["modeUtilisation","caCommande","parc","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque"];
+        const ctrmqOuVinManquant = !F.nCtrmq && !F.vinComplet; // au moins un des deux requis
         const Field=({k,label,ph})=>{
-          const req=REQUIRED.includes(k);
+          const reqConditionnel = (k==="nCtrmq"||k==="vinComplet") && ctrmqOuVinManquant;
+          const req=REQUIRED.includes(k)||reqConditionnel;
           const vide=req&&!F[k];
           return(
             <div><label style={{...lblS,color:req?"#dc2626":lblS.color}}>{label}{req&&" *"}</label>
@@ -1599,7 +1601,7 @@ function App(){
                 <Field k="marque" label="Marque" ph="ex: Citroën"/>
                 <Field k="projet" label="Projet" ph="ex: CC24"/>
                 <Field k="nMoyen" label="N° de Moyen ou OUPLAOP"/>
-                <Field k="nCtrmq" label="N° CTRMQ"/>
+                <Field k="nCtrmq" label="N° CTRMQ (ou VIN)"/>
                 <Field k="stadeVh" label="Stade vh" ph="ex: EL1"/>
                 <Field k="versionLCDV" label="Version LCDV"/>
                 <Field k="options" label="Options"/>
@@ -1607,7 +1609,7 @@ function App(){
 
               <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Autres</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-                <Field k="vinComplet" label="VIN complet (17 car., régularisation)"/>
+                <Field k="vinComplet" label="VIN complet (17 car., ou N° CTRMQ)"/>
                 <Field k="premiereUtilisation" label="1ère utilisation"/>
                 <Field k="nomFlotte" label="Nom de la flotte"/>
                 <Field k="nomPremierUtilisateur" label="Nom premier utilisateur"/>
@@ -1616,9 +1618,12 @@ function App(){
               </div>
 
               {(()=>{
-                const REQUIRED2=["modeUtilisation","caCommande","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque","nCtrmq"];
-                const ocvsOk = REQUIRED2.every(k=>F[k]&&F[k].trim()); // "parc" toujours valide (valeur par défaut)
+                const REQUIRED2=["modeUtilisation","caCommande","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque"];
+                const fixesOk = REQUIRED2.every(k=>F[k]&&F[k].trim());
+                const ctrmqOuVinOk = (F.nCtrmq&&F.nCtrmq.trim())||(F.vinComplet&&F.vinComplet.trim());
+                const ocvsOk = fixesOk && ctrmqOuVinOk;
                 const manquants = REQUIRED2.filter(k=>!F[k]||!F[k].trim());
+                if(!ctrmqOuVinOk) manquants.push("nCtrmq/vinComplet");
                 return(<>
                 {!ocvsOk&&manquants.length>0&&(
                   <div style={{fontSize:10,color:"#dc2626",marginBottom:8,textAlign:"right"}}>Champs obligatoires manquants : {manquants.length}</div>
