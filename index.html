@@ -187,6 +187,7 @@ const {useState,useMemo,useEffect,useRef} = React;
 const SK = "parc2525_v7";
 
 const PARCS_LIST = ["2525","2523","2562","2527","2516","5222","2540","2526"];
+const OCVS_CA_PARC = {"2525":"3D755","2562":"43SIF"}; // CA Commande par parc — à compléter au fur et à mesure
 const EVENTS_LIST = ["2A","3A","3B","1X","4V","2Y","7280","IDFR","BORD","LYON","RENNES","ANGE","BDX","NORD","EST","OUEST"];
 const MONTHS = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
 const DS = ["D","L","M","M","J","V","S"];
@@ -1496,7 +1497,7 @@ function App(){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🏭 Commandes OCVS — Parc {parcActif} ({ordersDuParc.length})</div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>{setOcvsForm({});setOcvsModal({mode:"new"});}}
+                  <button onClick={()=>{setOcvsForm({parc:parcActif,caCommande:OCVS_CA_PARC[parcActif]||""});setOcvsModal({mode:"new"});}}
                     style={{background:"#0c1a2e",color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
                     ＋ Nouvelle commande
                   </button>
@@ -1578,7 +1579,10 @@ function App(){
               <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Parc & responsables</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
                 <div><label style={{...lblS,color:"#dc2626"}}>Parc *</label>
-                  <select value={F.parc||parcActif} onChange={set("parc")} style={inpS}>
+                  <select value={F.parc||parcActif} onChange={e=>{
+                    const newParc=e.target.value;
+                    setOcvsForm(f=>({...f,parc:newParc,caCommande:OCVS_CA_PARC[newParc]||""}));
+                  }} style={inpS}>
                     {PARCS_LIST.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
