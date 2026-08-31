@@ -197,14 +197,25 @@ const EV_COLORS = {"2A":"#16a34a","3A":"#2563eb","3B":"#dc2626","1X":"#9333ea","
 
 
 function toISO(d){return d.toISOString().slice(0,10)}
+function ageVehicule(dateImmatISO){
+  if(!dateImmatISO) return "";
+  const d=new Date(dateImmatISO+"T00:00:00");
+  const now=new Date();
+  let mois=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
+  if(now.getDate()<d.getDate()) mois--;
+  if(mois<0) return "";
+  if(mois<12) return mois+" mois";
+  const ans=Math.floor(mois/12), reste=mois%12;
+  return reste===0 ? ans+" an"+(ans>1?"s":"") : ans+"a "+reste+"m";
+}
 function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,event:52,parc:52,vin:130};
+const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
 const COL=20, ROW=37;
 
-function EditCell({value,onSave,isSelect,opts,style={}}){
+function EditCell({value,onSave,isSelect,opts,style={},type="text"}){
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(value||"");
   const ref=useRef();
@@ -212,7 +223,7 @@ function EditCell({value,onSave,isSelect,opts,style={}}){
   useEffect(()=>{if(editing&&ref.current)ref.current.focus();},[editing]);
   if(!editing) return(
     <div onClick={e=>{e.stopPropagation();setEditing(true);}} style={{cursor:"pointer",minHeight:16,...style}}>
-      {value||<span style={{color:"#d1d5db",fontStyle:"italic",fontSize:9}}>—</span>}
+      {value?(type==="date"?value.split("-").reverse().join("/"):value):<span style={{color:"#d1d5db",fontStyle:"italic",fontSize:9}}>—</span>}
     </div>
   );
   if(isSelect) return(
@@ -223,7 +234,7 @@ function EditCell({value,onSave,isSelect,opts,style={}}){
     </select>
   );
   return(
-    <input ref={ref} value={val} onChange={e=>setVal(e.target.value)}
+    <input ref={ref} type={type} value={val} onChange={e=>setVal(e.target.value)}
       onBlur={()=>{onSave(val);setEditing(false);}}
       onKeyDown={e=>{if(e.key==="Enter"){onSave(val);setEditing(false);}if(e.key==="Escape")setEditing(false);}}
       style={{width:"100%",fontSize:10,border:"1.5px solid #3b82f6",borderRadius:4,padding:"1px 4px",background:"#fffbeb",outline:"none",fontFamily:"inherit"}}/>
@@ -237,6 +248,7 @@ function Login({onLogin}){
   function tryLogin(){
     if(pin==="1234"){onLogin("manager");}
     else if(pin==="0000"){onLogin("gaetan");}
+    else if(pin==="2525"){onLogin("manager2525");}
     else{setErr(true);setPin("");setTimeout(()=>setErr(false),1500);}
   }
   return(
@@ -455,6 +467,8 @@ function App(){
   const [nim,setNim]=useState(""); const [nmo,setNmo]=useState("");
   const [saved,setSaved]=useState(false);
   const [parcActif,setParcActif]=useState("2525");
+  const PARCS_VISIBLES = role==="manager2525" ? ["2525"] : PARCS_LIST;
+  useEffect(()=>{ if(role==="manager2525"&&parcActif!=="2525") setParcActif("2525"); },[role,parcActif]);
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
@@ -816,7 +830,7 @@ function App(){
       });
     }).catch(e=>alert("Erreur contrat: "+e.message));
   }
-  const uParcs=useMemo(()=>["TOUS",...PARCS_LIST],[]);
+  const uParcs=useMemo(()=>["TOUS",...PARCS_VISIBLES],[role]);
   const uEvents=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.event).filter(Boolean))].sort()],[vhl]);
   const uModeles=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.modele).filter(Boolean))].sort()],[vhl]);
   const uMoteurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.moteur).filter(Boolean))].sort()],[vhl]);
@@ -1014,7 +1028,7 @@ function App(){
           {id:"2562",label:"2562",sub:"Partenariat Citroën",color:"#0891b2"},
           {id:"2527",label:"2527",sub:"Marketing DS France",color:"#7c3aed"},
           {id:"2516",label:"2516",sub:"Partenariat DS",color:"#be185d"},
-        ].map(p=>{
+        ].filter(p=>role!=="manager2525"||p.id==="2525").map(p=>{
           const active=parcActif===p.id;
           return(
             <button key={p.id} onClick={()=>{setParcActif(p.id);}} style={{
@@ -1067,6 +1081,9 @@ function App(){
               <th style={{...ths,width:CW.moteur,minWidth:CW.moteur}}>Moteur</th>
               <th style={{...ths,width:CW.fin,minWidth:CW.fin}}>Fin.</th>
               <th style={{...ths,width:CW.couleur,minWidth:CW.couleur}}>Couleur</th>
+              <th style={{...ths,width:CW.dateImmat,minWidth:CW.dateImmat}}>Immatriculée le</th>
+              <th style={{...ths,width:CW.age,minWidth:CW.age}}>Âge</th>
+              <th style={{...ths,width:CW.equipements,minWidth:CW.equipements}}>Finitions/Options</th>
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
               <th style={{...ths,width:CW.vin,minWidth:CW.vin,borderRight:"2px solid #cbd5e1"}}>VIN / Châssis</th>
@@ -1105,7 +1122,7 @@ function App(){
                         {moveMenuFor===v.id&&(
                           <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:16,right:0,background:"#fff",border:"1.5px solid #e5e7eb",borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",zIndex:50,padding:6,width:150}}>
                             <div style={{fontSize:9,fontWeight:800,color:"#6b7280",textTransform:"uppercase",padding:"2px 6px",marginBottom:2}}>Déplacer vers :</div>
-                            {PARCS_LIST.filter(p=>p!==v.parc).map(p=>(
+                            {PARCS_VISIBLES.filter(p=>p!==v.parc).map(p=>(
                               <button key={p} onClick={()=>{upField(v.id,"parc",p);setMoveMenuFor(null);}}
                                 style={{display:"block",width:"100%",textAlign:"left",padding:"5px 8px",border:"none",background:"none",cursor:"pointer",fontSize:11,fontWeight:600,color:"#374151",borderRadius:5}}
                                 onMouseEnter={e=>e.currentTarget.style.background="#f3f4f6"}
@@ -1123,12 +1140,15 @@ function App(){
                   <td style={{...td,color:"#047857"}}><EditCell value={v.moteur} onSave={val=>upField(v.id,"moteur",val)}/></td>
                   <td style={{...td,color:"#7c3aed",fontWeight:600}}><EditCell value={v.fin} onSave={val=>upField(v.id,"fin",val)}/></td>
                   <td style={{...td}}><EditCell value={v.couleur} onSave={val=>upField(v.id,"couleur",val)}/></td>
+                  <td style={{...td}}><EditCell value={v.dateImmat} onSave={val=>upField(v.id,"dateImmat",val)} type="date"/></td>
+                  <td style={{...td,color:"#6b7280",fontSize:10}}>{ageVehicule(v.dateImmat)}</td>
+                  <td style={{...td}}><EditCell value={v.equipements} onSave={val=>upField(v.id,"equipements",val)} style={{fontSize:10}}/></td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
                     <EditCell value={v.event} onSave={val=>upField(v.id,"event",val)} isSelect={true} opts={EVENTS_LIST}
                       style={{fontWeight:800,fontSize:10,color:"#fff",background:ec,borderRadius:4,padding:"1px 5px",display:"inline-block"}}/>
                   </td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
-                    <EditCell value={v.parc} onSave={val=>upField(v.id,"parc",val)} isSelect={true} opts={PARCS_LIST}
+                    <EditCell value={v.parc} onSave={val=>upField(v.id,"parc",val)} isSelect={true} opts={PARCS_VISIBLES}
                       style={{fontWeight:700,fontSize:10,color:"#3730a3",background:"#e0e7ff",borderRadius:4,padding:"1px 5px",display:"inline-block"}}/>
                   </td>
                   <td style={{...td,fontFamily:"monospace",fontSize:9,color:"#6b7280",borderRight:"2px solid #cbd5e1"}}>
@@ -1276,7 +1296,7 @@ function App(){
                 <div>
                   <label style={{fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:2}}>PARC</label>
                   <select value={mvParc} onChange={e=>setMvParc(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}>
-                    {["TOUS",...PARCS_LIST].map(p=><option key={p} value={p}>{p}</option>)}
+                    {["TOUS",...PARCS_VISIBLES].map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1389,7 +1409,7 @@ function App(){
         });
 
         // Stats agrégées par parc
-        const parcsStats = PARCS_LIST.map(p=>{
+        const parcsStats = PARCS_VISIBLES.map(p=>{
           const vehs = statsVeh.filter(v=>v.parc===p);
           if(vehs.length===0) return null;
           const totalPrets = vehs.reduce((s,v)=>s+v.nbPrets,0);
@@ -1437,7 +1457,7 @@ function App(){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:12,fontWeight:800,color:"#374151"}}>🚗 Classement par véhicule (clique sur une colonne pour trier)</div>
                 <select value={statParc} onChange={e=>setStatParc(e.target.value)} style={{padding:"5px 8px",borderRadius:6,border:"1.5px solid #e5e7eb",fontSize:11}}>
-                  {["TOUS",...PARCS_LIST].map(p=><option key={p} value={p}>{p==="TOUS"?"Tous les parcs":"Parc "+p}</option>)}
+                  {["TOUS",...PARCS_VISIBLES].map(p=><option key={p} value={p}>{p==="TOUS"?"Tous les parcs":"Parc "+p}</option>)}
                 </select>
               </div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
@@ -1585,7 +1605,7 @@ function App(){
                     const newParc=e.target.value;
                     setOcvsForm(f=>({...f,parc:newParc,caCommande:OCVS_CA_PARC[newParc]||""}));
                   }} style={inpS}>
-                    {PARCS_LIST.map(p=><option key={p} value={p}>{p}</option>)}
+                    {PARCS_VISIBLES.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
                 </div>
                 <Field k="sousParc" label="Sous parc" ph="ex: 5222 FT"/>
