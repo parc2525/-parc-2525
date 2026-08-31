@@ -467,8 +467,8 @@ function App(){
   const [nim,setNim]=useState(""); const [nmo,setNmo]=useState("");
   const [saved,setSaved]=useState(false);
   const [parcActif,setParcActif]=useState("2525");
-  const PARCS_VISIBLES = role==="manager2525" ? ["2525"] : PARCS_LIST;
-  useEffect(()=>{ if(role==="manager2525"&&parcActif!=="2525") setParcActif("2525"); },[role,parcActif]);
+  const PARCS_VISIBLES = role==="manager2525" ? ["2525","2523"] : PARCS_LIST;
+  useEffect(()=>{ if(role==="manager2525"&&!PARCS_VISIBLES.includes(parcActif)) setParcActif("2525"); },[role,parcActif]);
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
@@ -504,6 +504,7 @@ function App(){
   const [fFin,setFFin]=useState("TOUS");
   const [fCouleur,setFCouleur]=useState("TOUS");
   const [fReservation,setFReservation]=useState("TOUS");
+  const [statutFiltre,setStatutFiltre]=useState("tous"); // "tous" | "pret" | "dispo"
 
   useEffect(()=>{
     function applyData(p){
@@ -846,7 +847,7 @@ function App(){
   function resetFilters(){setFEvent("");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setFMoteur("TOUS");setFReservation("TOUS");setSrch("");}
 
   const sq=srch.toLowerCase();
-  const visible=vhl.filter(v=>{
+  const visibleBase=vhl.filter(v=>{
     if(v.parc!==parcActif)return false;
     if(hidden[v.id])return false;
     if(fEvent&&!(v.event||"").toLowerCase().includes(fEvent.toLowerCase()))return false;
@@ -858,13 +859,18 @@ function App(){
     if(sq&&![v.id,v.modele,v.couleur,v.moteur,v.event,v.parc,v.vin].some(x=>(x||"").toLowerCase().includes(sq)))return false;
     return true;
   });
+  const enPret=visibleBase.filter(v=>(prets[v.id]||[]).some(p=>p.debut<=tISO&&p.fin>=tISO)).length;
+  const visible=visibleBase.filter(v=>{
+    if(statutFiltre==="tous")return true;
+    const estEnPret=(prets[v.id]||[]).some(p=>p.debut<=tISO&&p.fin>=tISO);
+    return statutFiltre==="pret" ? estEnPret : !estEnPret;
+  });
   const hiddenList=vhl.filter(v=>hidden[v.id]);
   const parcCounts=useMemo(()=>{
     const c={};
     ["2525","2562","2527","2516"].forEach(p=>{c[p]=vhl.filter(v=>v.parc===p).length;});
     return c;
   },[vhl]);
-  const enPret=visible.filter(v=>(prets[v.id]||[]).some(p=>p.debut<=tISO&&p.fin>=tISO)).length;
   const ok=form.debut&&form.fin&&form.personne.trim()&&form.fin>=form.debut;
 
   const ths={padding:"5px 4px",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:0.3,borderRight:"1px solid #e5e7eb",background:"#f8fafc",whiteSpace:"nowrap",overflow:"hidden",position:"sticky",top:0,zIndex:10};
@@ -880,7 +886,7 @@ function App(){
       {/* HEADER */}
       <div style={{background:"linear-gradient(135deg,#0c1a2e,#1a3a5c)",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:7,flexShrink:0}}>
         <div>
-          <div style={{fontSize:9,color:"#64748b",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>PARC 2525</div>
+          <div style={{fontSize:9,color:"#64748b",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>PARC {parcActif}</div>
           <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>🚗 Calendrier des prêts</div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
@@ -909,10 +915,11 @@ function App(){
 
       {/* STATS */}
       <div style={{background:"#fff",borderBottom:"1px solid #f1f5f9",padding:"4px 16px",display:"flex",gap:16,flexShrink:0,alignItems:"center"}}>
-        <span style={{fontSize:11}}><b style={{color:"#0c1a2e"}}>{visible.length}</b> <span style={{color:"#6b7280"}}>vhl</span></span>
-        <span style={{fontSize:11}}><b style={{color:"#f59e0b"}}>{enPret}</b> <span style={{color:"#6b7280"}}>en prêt</span></span>
-        <span style={{fontSize:11}}><b style={{color:"#16a34a"}}>{visible.length-enPret}</b> <span style={{color:"#6b7280"}}>dispo</span></span>
+        <span onClick={()=>setStatutFiltre("tous")} style={{fontSize:11,cursor:"pointer",padding:"2px 6px",borderRadius:5,background:statutFiltre==="tous"?"#e0e7ff":"transparent"}}><b style={{color:"#0c1a2e"}}>{visibleBase.length}</b> <span style={{color:"#6b7280"}}>vhl</span></span>
+        <span onClick={()=>setStatutFiltre("pret")} style={{fontSize:11,cursor:"pointer",padding:"2px 6px",borderRadius:5,background:statutFiltre==="pret"?"#fef3c7":"transparent"}}><b style={{color:"#f59e0b"}}>{enPret}</b> <span style={{color:"#6b7280"}}>en prêt</span></span>
+        <span onClick={()=>setStatutFiltre("dispo")} style={{fontSize:11,cursor:"pointer",padding:"2px 6px",borderRadius:5,background:statutFiltre==="dispo"?"#dcfce7":"transparent"}}><b style={{color:"#16a34a"}}>{visibleBase.length-enPret}</b> <span style={{color:"#6b7280"}}>dispo</span></span>
         <span onClick={()=>setShowArchive(true)} style={{fontSize:11,cursor:"pointer"}} title="Voir les véhicules archivés de ce parc"><b style={{color:"#d97706"}}>{archived.filter(v=>v.parc===parcActif).length}</b> <span style={{color:"#6b7280",textDecoration:"underline",textDecorationStyle:"dotted"}}>archivés</span></span>
+        {statutFiltre!=="tous"&&<button onClick={()=>setStatutFiltre("tous")} style={{fontSize:9,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>✕ Retirer le filtre statut</button>}
         {hiddenList.length>0&&<span style={{fontSize:10,color:"#9ca3af"}}>{hiddenList.length} masqué(s)</span>}
         <span style={{fontSize:9,color:"#d1d5db",marginLeft:"auto"}}>📄 contrat · 🔀 déplacer parc · ✏️ éditer · ⊗ masquer · 🗃️ archiver</span>
       </div>
@@ -1025,10 +1032,11 @@ function App(){
       <div style={{background:"#fff",borderBottom:"2px solid #e5e7eb",display:"flex",flexShrink:0,overflowX:"auto"}}>
         {[
           {id:"2525",label:"2525",sub:"Marketing Citroën",color:"#2563eb"},
+          {id:"2523",label:"2523",sub:"Régions Citroën/DS",color:"#059669"},
           {id:"2562",label:"2562",sub:"Partenariat Citroën",color:"#0891b2"},
           {id:"2527",label:"2527",sub:"Marketing DS France",color:"#7c3aed"},
           {id:"2516",label:"2516",sub:"Partenariat DS",color:"#be185d"},
-        ].filter(p=>role!=="manager2525"||p.id==="2525").map(p=>{
+        ].filter(p=>PARCS_VISIBLES.includes(p.id)).map(p=>{
           const active=parcActif===p.id;
           return(
             <button key={p.id} onClick={()=>{setParcActif(p.id);}} style={{
