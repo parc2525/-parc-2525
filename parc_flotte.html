@@ -1642,7 +1642,7 @@ function App(){
 
       {/* MODAL OCVS — LISTE */}
       {showOcvs&&(()=>{
-        const ordersDuParc = ocvsOrders.filter(o=>o.parc===parcActif).sort((a,b)=>b.dateCommande.localeCompare(a.dateCommande));
+        const ordersDuParc = ocvsOrders.filter(o=>o.parc===parcActif).sort((a,b)=>b.dateCommande.localeCompare(a.dateCommande)||b.id.localeCompare(a.id));
         const STATUTS={
           commande:{label:"📝 Commandé",bg:"#f1f5f9",color:"#374151"},
           fabrication:{label:"🏭 En fabrication",bg:"#fef3c7",color:"#92400e"},
