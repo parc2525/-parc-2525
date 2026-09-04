@@ -1144,38 +1144,11 @@ function App(){
   return (
     <div style={{display:"flex",flexDirection:"row",height:"100vh",overflow:"hidden",background:"#f4f7fb"}}>
 
-      {/* ================= RAIL LATERAL ================= */}
-      <div style={{width:64,background:"#0a1425",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:12,paddingBottom:12,flexShrink:0,zIndex:60}}>
-        <div style={{width:38,height:38,borderRadius:12,background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:18,boxShadow:"0 6px 18px rgba(37,99,235,.45)"}}>
-          <Ic n="car" s={20} c="#fff" w={2}/>
-        </div>
-        {[
-          {ic:"cal",     t:"Calendrier des prets", on:true,  go:()=>{}},
-          {ic:"list",    t:"Mouvements",           on:false, go:()=>setShowMouvements(true)},
-          {ic:"chart",   t:"Statistiques",         on:false, go:()=>setShowStats(true)},
-          {ic:"factory", t:"Commandes OCVS",       on:false, go:()=>setShowOcvs(true)},
-          {ic:"tool",    t:"Vehicules en modernisation", on:false, go:()=>setShowModernisation(true)},
-          {ic:"archive", t:"Vehicules archives",   on:false, go:()=>setShowArchive(true)},
-        ].map((r,i)=>(
-          <button key={i} className="railbtn" title={r.t} onClick={r.go}
-            style={{width:44,height:42,marginBottom:4,borderRadius:12,border:"none",cursor:"pointer",
-              background:r.on?"rgba(59,130,246,.20)":"transparent",
-              display:"flex",alignItems:"center",justifyContent:"center",position:"relative",transition:"background .15s"}}>
-            {r.on&&<span style={{position:"absolute",left:-12,top:11,width:3,height:20,borderRadius:3,background:"#3b82f6"}}/>}
-            <Ic n={r.ic} s={19} c={r.on?"#93c5fd":"#64748b"}/>
-          </button>
-        ))}
-        <button className="railbtn" title="Se deconnecter" onClick={()=>setRole(null)}
-          style={{marginTop:"auto",width:44,height:42,borderRadius:12,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <Ic n="lock" s={18} c="#64748b"/>
-        </button>
-      </div>
-
       {/* ================= COLONNE PRINCIPALE ================= */}
       <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden",background:"#f4f7fb"}}>
 
         {/* ---- TOP BAR ---- */}
-        <div style={{height:54,background:"#0f1e35",display:"flex",alignItems:"center",gap:12,padding:"0 16px",flexShrink:0,zIndex:50}}>
+        <div style={{minHeight:54,background:"#0f1e35",display:"flex",alignItems:"center",gap:10,padding:"7px 16px",flexShrink:0,zIndex:50,flexWrap:"wrap"}}>
           <div style={{fontSize:14,fontWeight:800,color:"#fff",letterSpacing:.6,whiteSpace:"nowrap"}}>PARC <span style={{color:"#60a5fa"}}>2525</span></div>
           <div style={{width:1,height:24,background:"rgba(255,255,255,.10)"}}/>
           <div style={{display:"flex",gap:2,overflowX:"auto",minWidth:0}}>
@@ -1192,13 +1165,34 @@ function App(){
               );
             })}
           </div>
-          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-            {saved&&<span style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,color:"#6ee7b7",fontWeight:700,background:"rgba(16,185,129,.12)",padding:"4px 9px",borderRadius:8}}><Ic n="check" s={12} c="#6ee7b7"/>Synchronise</span>}
-            <label title="Importer un fichier Excel de vehicules"
-              style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.13)",color:"#cbd5e1",borderRadius:9,padding:"6px 11px",cursor:"pointer",fontSize:11,fontWeight:700}}>
-              <Ic n="down" s={13} c="#cbd5e1"/> Import Excel
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            {saved&&<span style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,color:"#6ee7b7",fontWeight:700,background:"rgba(16,185,129,.12)",padding:"5px 9px",borderRadius:8}}><Ic n="check" s={12} c="#6ee7b7"/>Synchronisé</span>}
+
+            {/* Tous les modules restent visibles et libellés, comme avant la refonte */}
+            {[
+              {ic:"list",    lb:"Mouvements",      go:()=>setShowMouvements(true)},
+              {ic:"chart",   lb:"Statistiques",    go:()=>setShowStats(true)},
+              {ic:"factory", lb:"Commandes OCVS",  go:()=>setShowOcvs(true)},
+              {ic:"tool",    lb:"Modernisation",   go:()=>setShowModernisation(true), n:modernParc},
+              {ic:"archive", lb:"Archive",         go:()=>setShowArchive(true),       n:archived.filter(v=>v.parc===parcActif).length},
+            ].map(b=>(
+              <button key={b.lb} onClick={b.go} title={b.lb}
+                style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.14)",color:"#dbe3ec",borderRadius:9,padding:"6px 11px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+                <Ic n={b.ic} s={13} c="#93a3b8"/> {b.lb}{b.n!==undefined?" ("+b.n+")":""}
+              </button>
+            ))}
+
+            <label title="Importer un fichier Excel de véhicules"
+              style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.14)",color:"#dbe3ec",borderRadius:9,padding:"6px 11px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+              <Ic n="down" s={13} c="#93a3b8"/> Import Excel
               <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
             </label>
+
+            <button onClick={()=>setRole(null)} title="Se déconnecter"
+              style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.14)",color:"#dbe3ec",borderRadius:9,padding:"6px 11px",cursor:"pointer",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>
+              <Ic n="lock" s={13} c="#93a3b8"/> Déconnexion
+            </button>
+
             <div title={role==="manager2525"?"Alexandra":"Manager"}
               style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>
               {role==="manager2525"?"AW":"MG"}
