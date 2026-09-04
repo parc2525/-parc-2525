@@ -13,9 +13,19 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f4f8;overflow:hidden}
 input,select{font-family:inherit}
-::-webkit-scrollbar{height:5px;width:5px}
-::-webkit-scrollbar-track{background:#f1f5f9}
-::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}
+::-webkit-scrollbar{height:9px;width:9px}
+::-webkit-scrollbar-track{background:#eef2f7}
+::-webkit-scrollbar-thumb{background:#c3cede;border-radius:8px;border:2px solid #eef2f7}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+/* Barre de defilement horizontale du calendrier : volontairement large et attrapable */
+.hbar{scrollbar-width:auto;scrollbar-color:#8fa3bd #eef2f7}
+.hbar::-webkit-scrollbar{height:15px}
+.hbar::-webkit-scrollbar-track{background:#eef2f7;border-radius:0}
+.hbar::-webkit-scrollbar-thumb{background:#8fa3bd;border-radius:9px;border:3px solid #eef2f7;min-width:80px}
+.hbar::-webkit-scrollbar-thumb:hover{background:#64748b}
+.hbar::-webkit-scrollbar-thumb:active{background:#475569}
+.railbtn:hover{background:rgba(255,255,255,.10)!important}
+.kpi:hover{transform:translateY(-1px)}
 </style>
 </head>
 <body>
@@ -197,25 +207,114 @@ const EV_COLORS = {"2A":"#16a34a","3A":"#2563eb","3B":"#dc2626","1X":"#9333ea","
 
 
 function toISO(d){return d.toISOString().slice(0,10)}
-function ageVehicule(dateImmatISO){
-  if(!dateImmatISO) return "";
+function ageMois(dateImmatISO){
+  if(!dateImmatISO) return null;
   const d=new Date(dateImmatISO+"T00:00:00");
+  if(isNaN(d.getTime())) return null;
   const now=new Date();
   let mois=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
   if(now.getDate()<d.getDate()) mois--;
-  if(mois<0) return "";
+  return mois<0?null:mois;
+}
+function ageVehicule(dateImmatISO){
+  const mois=ageMois(dateImmatISO);
+  if(mois===null) return "";
   if(mois<12) return mois+" mois";
   const ans=Math.floor(mois/12), reste=mois%12;
   return reste===0 ? ans+" an"+(ans>1?"s":"") : ans+"a "+reste+"m";
 }
+
+/* ===== SEUILS D'ALERTE RENOUVELLEMENT =====
+   Pré-alerte volontairement en amont du seuil dur : le délai de production
+   OCVS est de ~2 mois, une alerte déclenchée pile au seuil arrive trop tard
+   pour commander le véhicule de remplacement. */
+const SEUIL_KM_ALERTE=10000, SEUIL_KM_PREALERTE=8000;
+const SEUIL_AGE_ALERTE=12,   SEUIL_AGE_PREALERTE=10;
+
+function kmNum(x){
+  if(x===undefined||x===null||x==="") return null;
+  const n=parseInt(String(x).replace(/[^0-9]/g,""),10);
+  return isNaN(n)?null:n;
+}
+function fmtKm(n){ return n===null||n===undefined?"":String(n).replace(/\B(?=(\d{3})+(?!\d))/g," "); }
+/* km affiché : saisie manuelle prioritaire, sinon dernier km de retour confirmé */
+function kmVehicule(v,vp){
+  const direct=kmNum(v.km);
+  if(direct!==null) return {km:direct,auto:false};
+  let last=null,lastDate="";
+  (vp||[]).forEach(p=>{
+    if(!p.retourConfirme) return;
+    const k=kmNum(p.kmRetour);
+    if(k!==null&&(p.fin||"")>=lastDate){ last=k; lastDate=p.fin||""; }
+  });
+  return {km:last,auto:last!==null};
+}
+function niveauKm(n){ if(n===null||n===undefined) return "none"; if(n>=SEUIL_KM_ALERTE) return "alerte"; if(n>=SEUIL_KM_PREALERTE) return "prealerte"; return "ok"; }
+function niveauAge(m){ if(m===null||m===undefined) return "none"; if(m>=SEUIL_AGE_ALERTE) return "alerte"; if(m>=SEUIL_AGE_PREALERTE) return "prealerte"; return "ok"; }
+const NIV={
+  alerte:   {fg:"#b91c1c",bg:"#fee2e2",bd:"#fca5a5"},
+  prealerte:{fg:"#b45309",bg:"#fef3c7",bd:"#fcd34d"},
+  ok:       {fg:"#334155",bg:"transparent",bd:"transparent"},
+  none:     {fg:"#cbd5e1",bg:"transparent",bd:"transparent"}
+};
+/* Couleur de barre = semantique metier lisible (et non plus une couleur cyclique
+   sans signification). Retard prioritaire sur la duree. */
+function couleurBarre(dureeJ,enRetard){
+  if(enRetard) return "#dc2626";
+  if(dureeJ<=3) return "#16a34a";
+  if(dureeJ<=14) return "#2563eb";
+  return "#7c3aed";
+}
 function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,event:52,parc:52,vin:130};
+const CW={immat:158,modele:100,moteur:86,fin:46,couleur:100,km:78,dateImmat:86,age:70,equipements:118,event:50,parc:50,vin:122};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
+
+/* ===== Jeu d'icones SVG (remplace les emojis dans l'interface calendrier) ===== */
+const ICONS={
+  cal:"M8 2.5v3M16 2.5v3M3.5 9.5h17M5.5 4.5h13a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2v-12a2 2 0 0 1 2-2z",
+  car:"M4 16.5h16M4 16.5v-4l2-5h12l2 5v4H4zM7 19v-2.5M17 19v-2.5M7.5 12.5h.01M16.5 12.5h.01",
+  tool:"M15.5 3.5a4.5 4.5 0 0 0-4.1 6.3L3.7 17.6a2 2 0 1 0 2.8 2.8l7.8-7.7a4.5 4.5 0 0 0 5.7-5.8l-2.6 2.6-2.1-2.1 2.6-2.6a4.5 4.5 0 0 0-2.4-1.3z",
+  archive:"M3.5 4.5h17v3.5h-17zM5 8v10.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V8M9.5 12h5",
+  chart:"M3 20.5h18M7 20.5v-6M12 20.5v-11M17 20.5v-8",
+  factory:"M3 20.5h18M5 20.5V10l5 3V10l5 3V7l4-2.5v16",
+  list:"M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01",
+  search:"M11 18.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM21 21l-4.4-4.4",
+  plus:"M12 5v14M5 12h14",
+  left:"M14.5 5.5 8 12l6.5 6.5",
+  right:"M9.5 5.5 16 12l-6.5 6.5",
+  filter:"M3.5 5.5h17l-6.6 7.7v5.6l-3.8 1.9v-7.5z",
+  down:"M12 3.5v11.5M7.5 10.5 12 15l4.5-4.5M4 20.5h16",
+  lock:"M6.5 10.5h11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8.5 10.5V7a3.5 3.5 0 0 1 7 0v3.5",
+  alert:"M12 9v4.5M12 17h.01M10.3 4 2.7 17.3A2 2 0 0 0 4.4 20.4h15.2a2 2 0 0 0 1.7-3.1L13.7 4a2 2 0 0 0-3.4 0z",
+  clock:"M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.5v5l3.3 1.9",
+  check:"M20 6.5 9.5 17 4 11.5",
+  key:"M14.5 3a6.5 6.5 0 0 0-6.2 8.5L3 16.8V21h4.2v-2.2h2.2v-2.2h2.1l.8-.8A6.5 6.5 0 1 0 14.5 3zM16.8 8.2h.01",
+  doc:"M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8zM14 3.5V8h4.5",
+  back:"M3.5 12a8.5 8.5 0 1 0 2.6-6.1M3.5 4v4.5H8",
+  hide:"M4 4l16 16M10.6 10.7a2 2 0 0 0 2.8 2.8M9.5 5.6A9.4 9.4 0 0 1 12 5.3c5 0 9 4.1 9 6.7 0 1-.7 2.2-1.9 3.4M6.3 7.3C4.1 8.7 3 10.7 3 12c0 2.6 4 6.7 9 6.7 1.1 0 2.2-.2 3.2-.6",
+  swap:"M4 8.5h13M14 5l3 3.5-3 3.5M20 15.5H7M10 12l-3 3.5L10 19",
+  help:"M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.7 9.3a2.4 2.4 0 0 1 4.6.8c0 1.6-2.3 2.4-2.3 2.4M12 16.8h.01"
+};
+function Ic({n,s=16,c="currentColor",w=1.9,style={}}){
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={w}
+      strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,display:"block",...style}}>
+      <path d={ICONS[n]||""}/>
+    </svg>
+  );
+}
+const PARC_META=[
+  {id:"2525",label:"2525",sub:"Marketing Citroen",color:"#2563eb"},
+  {id:"2523",label:"2523",sub:"Regions Citroen/DS",color:"#059669"},
+  {id:"2562",label:"2562",sub:"Partenariat Citroen",color:"#0891b2"},
+  {id:"2527",label:"2527",sub:"Marketing DS France",color:"#7c3aed"},
+  {id:"2516",label:"2516",sub:"Partenariat DS",color:"#be185d"},
+];
 const COL=20, ROW=37;
 
-function EditCell({value,onSave,isSelect,opts,style={},type="text"}){
+function EditCell({value,onSave,isSelect,opts,style={},type="text",placeholder=null}){
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState(value||"");
   const ref=useRef();
@@ -223,7 +322,7 @@ function EditCell({value,onSave,isSelect,opts,style={},type="text"}){
   useEffect(()=>{if(editing&&ref.current)ref.current.focus();},[editing]);
   if(!editing) return(
     <div onClick={e=>{e.stopPropagation();setEditing(true);}} style={{cursor:"pointer",minHeight:16,...style}}>
-      {value?(type==="date"?value.split("-").reverse().join("/"):value):<span style={{color:"#d1d5db",fontStyle:"italic",fontSize:9}}>—</span>}
+      {value?(type==="date"?value.split("-").reverse().join("/"):value):(placeholder||<span style={{color:"#d1d5db",fontStyle:"italic",fontSize:9}}>—</span>)}
     </div>
   );
   if(isSelect) return(
@@ -472,6 +571,9 @@ function App(){
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
   useEffect(()=>{ archivedRef.current=archived; },[archived]);
+  const [modernisation,setModernisation]=useState([]);
+  const modernisationRef=useRef([]);
+  useEffect(()=>{ modernisationRef.current=modernisation; },[modernisation]);
   const [ocvsOrders,setOcvsOrders]=useState([]);
   const ocvsRef=useRef([]);
   useEffect(()=>{ ocvsRef.current=ocvsOrders; },[ocvsOrders]);
@@ -482,6 +584,8 @@ function App(){
   const [ocvsModal,setOcvsModal]=useState(null);
   const [ocvsForm,setOcvsForm]=useState({});
   const [showArchive,setShowArchive]=useState(false);
+  const [showModernisation,setShowModernisation]=useState(false);
+  const [modMenuFor,setModMenuFor]=useState(null);
   const [showMouvements,setShowMouvements]=useState(false);
   const [showStats,setShowStats]=useState(false);
   const [statSortCol,setStatSortCol]=useState("totalJours");
@@ -561,6 +665,7 @@ function App(){
       const hiddenParsed = typeof p.hidden==="string"?JSON.parse(p.hidden):p.hidden;
       const vhlParsed = typeof p.vhl==="string"?JSON.parse(p.vhl):p.vhl;
       let archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
+      let modernisationParsed = typeof p.modernisation==="string"?JSON.parse(p.modernisation):(p.modernisation||[]);
       const ocvsParsed = typeof p.ocvs==="string"?JSON.parse(p.ocvs):(p.ocvs||[]);
       const ocvsHistoryParsed = typeof p.ocvsHistory==="string"?JSON.parse(p.ocvsHistory):(p.ocvsHistory||{});
       // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
@@ -568,10 +673,19 @@ function App(){
         const seen=new Set();
         archivedParsed = archivedParsed.filter(a=>{ if(seen.has(a.id)) return false; seen.add(a.id); return true; });
       }
+      if(modernisationParsed&&modernisationParsed.length){
+        const seenM=new Set();
+        modernisationParsed = modernisationParsed.filter(a=>{ if(seenM.has(a.id)) return false; seenM.add(a.id); return true; });
+        // un véhicule archivé ne peut pas être aussi en modernisation
+        const archIds=new Set(archivedParsed.map(a=>a.id));
+        modernisationParsed = modernisationParsed.filter(a=>!archIds.has(a.id));
+      }
       if(pretsParsed) setPrets(pretsParsed);
       if(hiddenParsed) setHidden(hiddenParsed);
       if(vhlParsed){
-        const archivedIds = new Set(archivedParsed.map(a=>a.id));
+        // MÊME PIÈGE QUE L'ARCHIVE : sans exclusion, les véhicules en modernisation
+        // seraient reconstruits depuis INIT et réapparaîtraient dans le calendrier.
+        const archivedIds = new Set([...archivedParsed.map(a=>a.id), ...modernisationParsed.map(a=>a.id)]);
         const saved={}; vhlParsed.forEach(v=>{ saved[v.id]=v; });
         // IMPORTANT : on exclut les véhicules archivés de la reconstruction depuis INIT,
         // sinon ils réapparaissent à chaque synchronisation.
@@ -581,6 +695,7 @@ function App(){
         setVhl([...merged,...extras]);
       }
       setArchived(archivedParsed);
+      setModernisation(modernisationParsed);
       setOcvsOrders(ocvsParsed);
       setOcvsHistory(ocvsHistoryParsed);
     }
@@ -636,17 +751,19 @@ function App(){
     });
   }
 
-  function persist(v,p,h,a,o,oh){
+  function persist(v,p,h,a,o,oh,mo){
     const ar = a!==undefined ? a : archivedRef.current;
     const oc = o!==undefined ? o : ocvsRef.current;
     const och = oh!==undefined ? oh : ocvsHistoryRef.current;
-    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och}));}catch(_){}
+    const mod = mo!==undefined ? mo : modernisationRef.current;
+    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och,modernisation:mod}));}catch(_){}
     try{
       db.ref("parc2525").set({
         vhl: JSON.stringify(v),
         prets: JSON.stringify(p),
         hidden: JSON.stringify(h),
         archived: JSON.stringify(ar),
+        modernisation: JSON.stringify(mod),
         ocvs: JSON.stringify(oc),
         ocvsHistory: JSON.stringify(och),
         updatedAt: Date.now()
@@ -668,6 +785,49 @@ function App(){
         return newArchived;
       });
       return newVhl;
+    });
+  }
+
+  /* ===== MODERNISATION =====
+     Même mécanique que l'archive (liste séparée, sortie du calendrier),
+     mais RÉVERSIBLE : on mémorise parcOrigine pour la remise en parc. */
+  function pretsEnCoursOuAVenir(vid){
+    return (prets[vid]||[]).filter(p=>!p.retourConfirme && (p.fin||"")>=tISO);
+  }
+  function toModernisation(id){
+    const v = vhl.find(x=>x.id===id);
+    if(!v) return;
+    const encours = pretsEnCoursOuAVenir(id);
+    if(encours.length){
+      const liste = encours.map(p=>"  · "+(p.personne||"?")+"  "+ (p.debut||"").split("-").reverse().join("/") +" → "+ (p.fin||"").split("-").reverse().join("/")).join("\n");
+      if(!confirm("⚠ "+id+" a "+encours.length+" réservation(s) non soldée(s) :\n"+liste+"\n\nEn le passant en modernisation il disparaît du calendrier et ces réservations ne seront plus visibles.\n\nContinuer quand même ?")) return;
+    }
+    setVhl(prevVhl=>{
+      const cible = prevVhl.find(x=>x.id===id);
+      if(!cible) return prevVhl;
+      const newVhl = prevVhl.filter(x=>x.id!==id);
+      setModernisation(prev=>{
+        if(prev.some(a=>a.id===id)) return prev;
+        const next=[...prev,{...cible, parcOrigine: cible.parc, modernisationAt: new Date().toLocaleDateString("fr-FR")}];
+        persist(newVhl, prets, hidden, undefined, undefined, undefined, next);
+        return next;
+      });
+      return newVhl;
+    });
+  }
+  function retourDeModernisation(id,parcCible){
+    setModernisation(prev=>{
+      const v = prev.find(x=>x.id===id);
+      if(!v) return prev;
+      const nextMod = prev.filter(x=>x.id!==id);
+      const {parcOrigine, modernisationAt, ...clean} = v;
+      const remis = {...clean, parc: parcCible||parcOrigine||v.parc, retourModernisationAt: new Date().toLocaleDateString("fr-FR")};
+      setVhl(prevVhl=>{
+        const newVhl = prevVhl.some(x=>x.id===id) ? prevVhl : [...prevVhl, remis];
+        persist(newVhl, prets, hidden, undefined, undefined, undefined, nextMod);
+        return newVhl;
+      });
+      return nextMod;
     });
   }
 
@@ -961,14 +1121,20 @@ function App(){
     return statutFiltre==="pret" ? estEnPret : !estEnPret;
   });
   const hiddenList=vhl.filter(v=>hidden[v.id]);
+  /* Un véhicule en modernisation reste comptabilisé dans son parc :
+     il n'en sort définitivement qu'au passage en archive (VO). */
   const parcCounts=useMemo(()=>{
     const c={};
-    ["2525","2562","2527","2516"].forEach(p=>{c[p]=vhl.filter(v=>v.parc===p).length;});
+    PARCS_LIST.forEach(p=>{
+      c[p]=vhl.filter(v=>v.parc===p).length
+          + modernisation.filter(v=>(v.parcOrigine||v.parc)===p).length;
+    });
     return c;
-  },[vhl]);
+  },[vhl,modernisation]);
+  const modernParc = modernisation.filter(v=>(v.parcOrigine||v.parc)===parcActif).length;
   const ok=form.debut&&form.fin&&form.personne.trim()&&form.fin>=form.debut;
 
-  const ths={padding:"5px 4px",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:0.3,borderRight:"1px solid #e5e7eb",background:"#f8fafc",whiteSpace:"nowrap",overflow:"hidden",position:"sticky",top:0,zIndex:10};
+  const ths={padding:"7px 6px",fontSize:9,fontWeight:800,color:"#8b98a9",textTransform:"uppercase",letterSpacing:0.5,borderRight:"1px solid #eef2f7",background:"#fbfcfe",whiteSpace:"nowrap",overflow:"hidden",position:"sticky",top:0,zIndex:10,textAlign:"left",borderBottom:"1px solid #e6ecf3"};
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:13,outline:"none",fontFamily:"inherit",background:"#fafafa"};
   const lbl={fontSize:11,color:"#6b7280",fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,display:"block",marginBottom:5};
 
@@ -976,69 +1142,197 @@ function App(){
   if(role==="gaetan") return <VueGaetan prets={prets} vhl={vhl} tISO={tISO} onConfirm={confirmAction}/>;
 
   return (
-    <div style={{display:"flex",flexDirection:"column",height:"100vh",overflow:"hidden"}}>
+    <div style={{display:"flex",flexDirection:"row",height:"100vh",overflow:"hidden",background:"#f4f7fb"}}>
 
-      {/* HEADER */}
-      <div style={{background:"linear-gradient(135deg,#0c1a2e,#1a3a5c)",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:7,flexShrink:0}}>
-        <div>
-          <div style={{fontSize:9,color:"#64748b",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>PARC {parcActif}</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>🚗 Calendrier des prêts</div>
+      {/* ================= RAIL LATERAL ================= */}
+      <div style={{width:64,background:"#0a1425",display:"flex",flexDirection:"column",alignItems:"center",paddingTop:12,paddingBottom:12,flexShrink:0,zIndex:60}}>
+        <div style={{width:38,height:38,borderRadius:12,background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:18,boxShadow:"0 6px 18px rgba(37,99,235,.45)"}}>
+          <Ic n="car" s={20} c="#fff" w={2}/>
         </div>
-        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          {saved&&<span style={{fontSize:10,color:"#86efac",fontWeight:700,background:"rgba(0,0,0,0.2)",padding:"3px 8px",borderRadius:5}}>✓ Synchronisé</span>}
-          <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="🔍 Rechercher…"
-            style={{padding:"5px 10px",borderRadius:7,border:"none",fontSize:11,outline:"none",background:"rgba(255,255,255,0.12)",color:"#fff",width:140}}/>
-          <div style={{display:"flex",alignItems:"center",gap:2,background:"rgba(255,255,255,0.1)",borderRadius:8,padding:"4px 7px"}}>
-            <button onClick={prevM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>‹</button>
-            <span style={{color:"#fff",fontWeight:700,fontSize:11,minWidth:110,textAlign:"center"}}>{MONTHS[vm]} {vy}</span>
-            <button onClick={nextM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>›</button>
-          </div>
-          <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
-          <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
-          <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
-          <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
-          <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
-          <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
-            📥 Import Excel
-            <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
-          </label>
-          <button onClick={()=>setRole(null)} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🔒 Déco</button>
-          <button onClick={()=>{setVy(today.getFullYear());setVm(today.getMonth());}} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>Aujourd'hui</button>
-          <button onClick={()=>setAddOpen(true)} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"5px 11px",cursor:"pointer",fontSize:11,fontWeight:700}}>＋ Véhicule</button>
-        </div>
+        {[
+          {ic:"cal",     t:"Calendrier des prets", on:true,  go:()=>{}},
+          {ic:"list",    t:"Mouvements",           on:false, go:()=>setShowMouvements(true)},
+          {ic:"chart",   t:"Statistiques",         on:false, go:()=>setShowStats(true)},
+          {ic:"factory", t:"Commandes OCVS",       on:false, go:()=>setShowOcvs(true)},
+          {ic:"tool",    t:"Vehicules en modernisation", on:false, go:()=>setShowModernisation(true)},
+          {ic:"archive", t:"Vehicules archives",   on:false, go:()=>setShowArchive(true)},
+        ].map((r,i)=>(
+          <button key={i} className="railbtn" title={r.t} onClick={r.go}
+            style={{width:44,height:42,marginBottom:4,borderRadius:12,border:"none",cursor:"pointer",
+              background:r.on?"rgba(59,130,246,.20)":"transparent",
+              display:"flex",alignItems:"center",justifyContent:"center",position:"relative",transition:"background .15s"}}>
+            {r.on&&<span style={{position:"absolute",left:-12,top:11,width:3,height:20,borderRadius:3,background:"#3b82f6"}}/>}
+            <Ic n={r.ic} s={19} c={r.on?"#93c5fd":"#64748b"}/>
+          </button>
+        ))}
+        <button className="railbtn" title="Se deconnecter" onClick={()=>setRole(null)}
+          style={{marginTop:"auto",width:44,height:42,borderRadius:12,border:"none",cursor:"pointer",background:"transparent",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Ic n="lock" s={18} c="#64748b"/>
+        </button>
       </div>
 
-      {/* STATS */}
-      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"8px 16px",display:"flex",gap:8,flexShrink:0,alignItems:"center",flexWrap:"wrap"}}>
-        {[
-          {key:"tous",n:visibleBase.length,label:"véhicules",icon:"🚗",color:"#0c1a2e",bg:"#f1f5f9",bgActive:"#e0e7ff"},
-          {key:"pret",n:enPret,label:"en prêt",icon:"🔑",color:"#d97706",bg:"#fffbeb",bgActive:"#fef3c7"},
-          {key:"dispo",n:visibleBase.length-enPret,label:"disponibles",icon:"✅",color:"#16a34a",bg:"#f0fdf4",bgActive:"#dcfce7"},
-        ].map(c=>(
-          <div key={c.key} onClick={()=>setStatutFiltre(c.key)}
-            style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",borderRadius:10,cursor:"pointer",
-              background:statutFiltre===c.key?c.bgActive:c.bg,
-              border:"1.5px solid "+(statutFiltre===c.key?c.color+"55":"transparent"),
-              transition:"all 0.12s"}}>
-            <span style={{fontSize:15}}>{c.icon}</span>
-            <div style={{lineHeight:1.1}}>
-              <div style={{fontSize:15,fontWeight:800,color:c.color}}>{c.n}</div>
-              <div style={{fontSize:9,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap"}}>{c.label}</div>
+      {/* ================= COLONNE PRINCIPALE ================= */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,overflow:"hidden",background:"#f4f7fb"}}>
+
+        {/* ---- TOP BAR ---- */}
+        <div style={{height:54,background:"#0f1e35",display:"flex",alignItems:"center",gap:12,padding:"0 16px",flexShrink:0,zIndex:50}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#fff",letterSpacing:.6,whiteSpace:"nowrap"}}>PARC <span style={{color:"#60a5fa"}}>2525</span></div>
+          <div style={{width:1,height:24,background:"rgba(255,255,255,.10)"}}/>
+          <div style={{display:"flex",gap:2,overflowX:"auto",minWidth:0}}>
+            {PARC_META.filter(p=>PARCS_VISIBLES.includes(p.id)).map(p=>{
+              const active=parcActif===p.id;
+              return(
+                <button key={p.id} onClick={()=>setParcActif(p.id)} title={p.sub}
+                  style={{padding:"6px 12px",borderRadius:9,border:"none",cursor:"pointer",flexShrink:0,
+                    background:active?"rgba(255,255,255,.12)":"transparent",display:"flex",alignItems:"center",gap:7,transition:"background .15s"}}>
+                  <span style={{width:6,height:6,borderRadius:3,background:p.color,flexShrink:0,opacity:active?1:.55}}/>
+                  <span style={{fontSize:12.5,fontWeight:800,color:active?"#fff":"#93a3b8",letterSpacing:.2}}>{p.label}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:active?"#cbd5e1":"#5b6b81",fontVariantNumeric:"tabular-nums"}}>{parcCounts[p.id]||0}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            {saved&&<span style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,color:"#6ee7b7",fontWeight:700,background:"rgba(16,185,129,.12)",padding:"4px 9px",borderRadius:8}}><Ic n="check" s={12} c="#6ee7b7"/>Synchronise</span>}
+            <label title="Importer un fichier Excel de vehicules"
+              style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,.09)",border:"1px solid rgba(255,255,255,.13)",color:"#cbd5e1",borderRadius:9,padding:"6px 11px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+              <Ic n="down" s={13} c="#cbd5e1"/> Import Excel
+              <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
+            </label>
+            <div title={role==="manager2525"?"Alexandra":"Manager"}
+              style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>
+              {role==="manager2525"?"AW":"MG"}
             </div>
           </div>
-        ))}
-        <div onClick={()=>setShowArchive(true)} title="Voir les véhicules archivés de ce parc"
-          style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",borderRadius:10,cursor:"pointer",background:"#fdf4e7",border:"1.5px solid transparent"}}>
-          <span style={{fontSize:15}}>🗃️</span>
-          <div style={{lineHeight:1.1}}>
-            <div style={{fontSize:15,fontWeight:800,color:"#d97706"}}>{archived.filter(v=>v.parc===parcActif).length}</div>
-            <div style={{fontSize:9,color:"#6b7280",fontWeight:600,whiteSpace:"nowrap"}}>archivés</div>
+        </div>
+
+        {/* ---- EN-TETE DE PAGE ---- */}
+        <div style={{background:"#fff",borderBottom:"1px solid #e6ecf3",padding:"11px 20px",display:"flex",alignItems:"center",gap:14,flexShrink:0,flexWrap:"wrap"}}>
+          <div style={{width:40,height:40,borderRadius:12,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ic n="cal" s={20} c="#2563eb"/>
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:19,fontWeight:800,color:"#0f172a",letterSpacing:-.35,lineHeight:1.15}}>Calendrier des prêts</div>
+            <div style={{fontSize:11,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>
+              Parc {parcActif} · {(PARC_META.find(p=>p.id===parcActif)||{}).sub||"—"} · {visibleBase.length+modernParc} véhicules{modernParc>0?" (dont "+modernParc+" en modernisation)":""}
+            </div>
+          </div>
+
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>{setVy(today.getFullYear());setVm(today.getMonth());}}
+              style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 13px",borderRadius:10,border:"1px solid #dbe3ec",background:"#fff",cursor:"pointer",fontSize:12.5,fontWeight:700,color:"#334155"}}>
+              <Ic n="back" s={14} c="#64748b"/> Aujourd'hui
+            </button>
+
+            <div style={{display:"flex",alignItems:"center",height:36,border:"1px solid #dbe3ec",borderRadius:10,background:"#fff",overflow:"hidden"}}>
+              <button onClick={prevM} title="Mois précédent" style={{width:34,height:34,border:"none",background:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="left" s={15} c="#475569"/></button>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",minWidth:126,textAlign:"center",letterSpacing:-.2}}>{MONTHS[vm]} {vy}</div>
+              <button onClick={nextM} title="Mois suivant" style={{width:34,height:34,border:"none",background:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="right" s={15} c="#475569"/></button>
+            </div>
+
+            <div style={{display:"flex",height:36,background:"#eef2f7",borderRadius:10,padding:3,gap:2}}>
+              {[
+                {k:"mois",   lb:"Mois",    on:true,        go:()=>{}},
+                {k:"liste",  lb:"Liste",   on:false,       go:()=>setShowMouvements(true)},
+                {k:"compact",lb:"Compact", on:compactMode, go:()=>setCompactMode(m=>!m)},
+              ].map(b=>(
+                <button key={b.k} onClick={b.go}
+                  style={{padding:"0 13px",height:30,borderRadius:8,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+                    background:b.on?"#2563eb":"transparent",color:b.on?"#fff":"#64748b",
+                    boxShadow:b.on?"0 1px 4px rgba(37,99,235,.35)":"none",transition:"all .15s"}}>{b.lb}</button>
+              ))}
+            </div>
+
+            <button onClick={()=>setAddOpen(true)}
+              style={{display:"flex",alignItems:"center",gap:6,height:36,padding:"0 15px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",cursor:"pointer",fontSize:12.5,fontWeight:700,boxShadow:"0 2px 8px rgba(37,99,235,.32)"}}>
+              <Ic n="plus" s={15} c="#fff"/> Véhicule
+            </button>
           </div>
         </div>
-        {statutFiltre!=="tous"&&<button onClick={()=>setStatutFiltre("tous")} style={{fontSize:10,color:"#dc2626",background:"#fef2f2",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontWeight:700}}>✕ Filtre statut</button>}
-        {hiddenList.length>0&&<span style={{fontSize:10,color:"#9ca3af"}}>{hiddenList.length} masqué(s)</span>}
-        <span style={{fontSize:9,color:"#d1d5db",marginLeft:"auto"}}>📄 contrat · 🔀 déplacer parc · ✏️ éditer · ⊗ masquer · 🗃️ archiver</span>
-      </div>
+
+        {/* ---- CARTES KPI ---- */}
+        {(()=>{
+          const nbRetards = Object.entries(prets).reduce((acc,[vid,vp])=>{
+            const v=vhl.find(x=>x.id===vid);
+            if(!v||v.parc!==parcActif) return acc;
+            return acc + (vp||[]).filter(p=>!p.retourConfirme && p.fin<tISO).length;
+          },0);
+          const nbModern = modernParc;
+          const cards=[
+            {k:"dispo", label:"Disponibles",     n:visibleBase.length-enPret, sub:"Véhicules prêts à l'emploi", ic:"car",     color:"#059669", soft:"#e7f6ef", act:()=>setStatutFiltre(statutFiltre==="dispo"?"tous":"dispo"), on:statutFiltre==="dispo"},
+            {k:"pret",  label:"Prêts en cours",  n:enPret,                    sub:"Véhicules actuellement prêtés", ic:"key", color:"#2563eb", soft:"#e8f0fe", act:()=>setStatutFiltre(statutFiltre==="pret"?"tous":"pret"),  on:statutFiltre==="pret"},
+            {k:"retard",label:"Retours en retard",n:nbRetards,                sub:"À régulariser rapidement",  ic:"clock",   color:"#ea580c", soft:"#fdeee2", act:()=>setShowMouvements(true), on:false, warn:nbRetards>0},
+            {k:"modern",label:"En modernisation",n:nbModern,                  sub:"Sortis temporairement du parc", ic:"tool",color:"#0891b2", soft:"#e2f4f8", act:()=>setShowModernisation(true), on:false},
+            {k:"arch",  label:"Archivés",        n:archived.filter(v=>v.parc===parcActif).length, sub:"Véhicules sortis du parc", ic:"archive", color:"#7c3aed", soft:"#efe9fd", act:()=>setShowArchive(true), on:false},
+          ];
+          return(
+            <div style={{display:"flex",gap:12,padding:"14px 20px 0",flexShrink:0,flexWrap:"wrap"}}>
+              {cards.map(c=>(
+                <div key={c.k} className="kpi" onClick={c.act} title={c.sub}
+                  style={{flex:"1 1 0",minWidth:186,background:"#fff",borderRadius:14,cursor:"pointer",
+                    border:"1px solid "+(c.on?c.color+"66":"#e6ecf3"),
+                    boxShadow:c.on?"0 3px 12px "+c.color+"1f":"0 1px 2px rgba(15,23,42,.05)",
+                    padding:"13px 15px",display:"flex",alignItems:"center",gap:13,position:"relative",overflow:"hidden",transition:"all .15s"}}>
+                  <span style={{position:"absolute",left:0,top:0,bottom:0,width:3,background:c.color,opacity:c.on?1:.5}}/>
+                  <div style={{width:40,height:40,borderRadius:"50%",background:c.soft,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Ic n={c.ic} s={19} c={c.color}/>
+                  </div>
+                  <div style={{minWidth:0,lineHeight:1.2}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{fontSize:11.5,fontWeight:700,color:"#64748b",whiteSpace:"nowrap"}}>{c.label}</span>
+                      {c.warn&&<Ic n="alert" s={12} c="#ea580c"/>}
+                    </div>
+                    <div style={{fontSize:25,fontWeight:800,color:"#0f172a",letterSpacing:-.8,fontVariantNumeric:"tabular-nums",lineHeight:1.1}}>{c.n}</div>
+                    <div style={{fontSize:10,color:"#a2adbb",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:150}}>{c.sub}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ---- BARRE DE FILTRES ---- */}
+        <div style={{margin:"12px 20px 0",background:"#fff",border:"1px solid #e6ecf3",borderRadius:14,padding:"9px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",flexShrink:0,boxShadow:"0 1px 2px rgba(15,23,42,.04)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,paddingRight:11,marginRight:2,borderRight:"1px solid #eef2f7",flexShrink:0}}>
+            <Ic n="filter" s={14} c="#94a3b8"/>
+            <span style={{fontSize:11.5,fontWeight:800,color:"#475569"}}>Filtres</span>
+          </div>
+          <input type="text" value={fEvent} onChange={e=>setFEvent(e.target.value)} placeholder="Event, golf, FFG…"
+            style={{height:31,padding:"0 11px",borderRadius:9,border:"1px solid "+(fEvent?"#93c5fd":"#e2e8f0"),fontSize:11.5,outline:"none",fontFamily:"inherit",width:132,
+              background:fEvent?"#eff6ff":"#fbfcfe",color:fEvent?"#1d4ed8":"#334155",fontWeight:fEvent?700:500}}/>
+          {[
+            {label:"Modèle",val:fModele,set:setFModele,opts:uModeles},
+            {label:"Moteur",val:fMoteur,set:setFMoteur,opts:uMoteurs},
+            {label:"Finition",val:fFin,set:setFFin,opts:uFins},
+            {label:"Couleur",val:fCouleur,set:setFCouleur,opts:uCouleurs},
+            {label:"Réservation",val:fReservation,set:setFReservation,opts:uReservations},
+          ].map(({label,val,set,opts})=>{
+            const on=val!=="TOUS";
+            return(
+              <select key={label} value={val} onChange={e=>set(e.target.value)}
+                style={{height:31,padding:"0 8px",borderRadius:9,border:"1px solid "+(on?"#93c5fd":"#e2e8f0"),fontSize:11.5,outline:"none",fontFamily:"inherit",cursor:"pointer",
+                  background:on?"#eff6ff":"#fbfcfe",color:on?"#1d4ed8":"#64748b",fontWeight:on?700:600,maxWidth:150}}>
+                <option value="TOUS">{label}</option>
+                {opts.filter(o=>o!=="TOUS").map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+            );
+          })}
+          {hasFilter&&<span style={{fontSize:11,color:"#1d4ed8",fontWeight:800,background:"#eff6ff",padding:"4px 9px",borderRadius:8,fontVariantNumeric:"tabular-nums"}}>{visible.length} résultat{visible.length!==1?"s":""}</span>}
+
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:7,height:32,padding:"0 11px",borderRadius:9,border:"1px solid "+(srch?"#93c5fd":"#e2e8f0"),background:srch?"#eff6ff":"#fbfcfe"}}>
+              <Ic n="search" s={14} c={srch?"#2563eb":"#94a3b8"}/>
+              <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="Recherche…"
+                style={{border:"none",outline:"none",background:"transparent",fontSize:11.5,fontFamily:"inherit",width:150,color:"#0f172a",fontWeight:srch?700:500}}/>
+            </div>
+            {hasFilter&&(
+              <button onClick={resetFilters} title="Réinitialiser tous les filtres"
+                style={{display:"flex",alignItems:"center",gap:6,height:32,padding:"0 11px",borderRadius:9,border:"none",background:"transparent",color:"#2563eb",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
+                <Ic n="back" s={13} c="#2563eb"/> Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
 
       {/* ALERTES RETOURS */}
       {(()=>{
@@ -1144,56 +1438,12 @@ function App(){
         );
       })()}
 
-      {/* ONGLETS PARCS */}
-      <div style={{background:"#fff",borderBottom:"2px solid #e5e7eb",display:"flex",flexShrink:0,overflowX:"auto"}}>
-        {[
-          {id:"2525",label:"2525",sub:"Marketing Citroën",color:"#2563eb"},
-          {id:"2523",label:"2523",sub:"Régions Citroën/DS",color:"#059669"},
-          {id:"2562",label:"2562",sub:"Partenariat Citroën",color:"#0891b2"},
-          {id:"2527",label:"2527",sub:"Marketing DS France",color:"#7c3aed"},
-          {id:"2516",label:"2516",sub:"Partenariat DS",color:"#be185d"},
-        ].filter(p=>PARCS_VISIBLES.includes(p.id)).map(p=>{
-          const active=parcActif===p.id;
-          return(
-            <button key={p.id} onClick={()=>{setParcActif(p.id);}} style={{
-              padding:"8px 18px",border:"none",borderBottom:active?"3px solid "+p.color:"3px solid transparent",
-              background:"transparent",cursor:"pointer",flexShrink:0,
-              transition:"all 0.15s"
-            }}>
-              <div style={{fontSize:13,fontWeight:800,color:active?p.color:"#6b7280"}}>{p.label}</div>
-              <div style={{fontSize:9,color:active?p.color:"#9ca3af",fontWeight:500}}>{p.sub} · {parcCounts[p.id]||0} vhl</div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* FILTRES */}
-      <div style={{background:"#fafbfc",borderBottom:"1px solid #eef0f2",padding:"6px 16px",display:"flex",gap:6,flexShrink:0,flexWrap:"wrap",alignItems:"center"}}>
-        <span style={{fontSize:9,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:0.5}}>Filtres</span>
-        <input type="text" value={fEvent} onChange={e=>setFEvent(e.target.value)} placeholder="🔍 event, golf, FFG…"
-          style={{padding:"4px 8px",borderRadius:8,border:"1.5px solid "+(fEvent?"#2563eb":"#e5e7eb"),fontSize:10,outline:"none",fontFamily:"inherit",background:fEvent?"#eff6ff":"#fff",color:fEvent?"#2563eb":"#374151",fontWeight:fEvent?700:400,width:130}}/>
-        {[
-          {label:"Modèle",val:fModele,set:setFModele,opts:uModeles},
-          {label:"Moteur",val:fMoteur,set:setFMoteur,opts:uMoteurs},
-          {label:"Finition",val:fFin,set:setFFin,opts:uFins},
-          {label:"Couleur",val:fCouleur,set:setFCouleur,opts:uCouleurs},
-          {label:"Réservation",val:fReservation,set:setFReservation,opts:uReservations},
-        ].map(({label,val,set,opts})=>(
-          <select key={label} value={val} onChange={e=>set(e.target.value)}
-            style={{padding:"4px 7px",borderRadius:8,border:"1.5px solid "+(val!=="TOUS"?"#2563eb":"#e5e7eb"),fontSize:10,outline:"none",fontFamily:"inherit",background:val!=="TOUS"?"#eff6ff":"#fff",color:val!=="TOUS"?"#2563eb":"#6b7280",fontWeight:val!=="TOUS"?700:500,cursor:"pointer",maxWidth:120}}>
-            <option value="TOUS">{label}</option>
-            {opts.filter(o=>o!=="TOUS").map(o=><option key={o} value={o}>{o}</option>)}
-          </select>
-        ))}
-        {hasFilter&&<button onClick={resetFilters} style={{padding:"4px 10px",borderRadius:8,border:"none",background:"#fef2f2",color:"#dc2626",fontSize:10,fontWeight:700,cursor:"pointer"}}>✕ Effacer</button>}
-        {hasFilter&&<span style={{fontSize:10,color:"#2563eb",fontWeight:700,background:"#eff6ff",padding:"3px 8px",borderRadius:8}}>{visible.length} résultat{visible.length!==1?"s":""}</span>}
-      </div>
-
-      {/* TABLEAU */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0}}>
+      {/* ================= CARTE CALENDRIER ================= */}
+      <div style={{flex:1,margin:"12px 20px 16px",display:"flex",flexDirection:"column",overflow:"hidden",minHeight:0,
+        background:"#fff",border:"1px solid #e6ecf3",borderRadius:16,boxShadow:"0 1px 3px rgba(15,23,42,.06)"}}>
         <div ref={calWrapRef} onScroll={onCalScroll} onWheel={onCalWheel}
           onMouseDown={onCalMouseDown} onMouseMove={onCalMouseMove} onMouseUp={onCalMouseUp} onMouseLeave={onCalMouseUp}
-          style={{flex:1,overflow:"auto",minHeight:0,cursor:dragRef.current.down?"grabbing":"default"}}>
+          style={{flex:1,overflow:"auto",minHeight:0,borderRadius:"16px 16px 0 0",cursor:dragRef.current.down?"grabbing":"default"}}>
         <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:"100%",minWidth:(compactMode?CW.immat:FIXED)+days.length*colW}}>
           <thead>
             <tr>
@@ -1203,8 +1453,9 @@ function App(){
               <th style={{...ths,width:CW.moteur,minWidth:CW.moteur}}>Moteur</th>
               <th style={{...ths,width:CW.fin,minWidth:CW.fin}}>Fin.</th>
               <th style={{...ths,width:CW.couleur,minWidth:CW.couleur}}>Couleur</th>
+              <th style={{...ths,width:CW.km,minWidth:CW.km}} title={"Alerte au-delà de "+fmtKm(SEUIL_KM_ALERTE)+" km · pré-alerte à "+fmtKm(SEUIL_KM_PREALERTE)+" km"}>Km</th>
               <th style={{...ths,width:CW.dateImmat,minWidth:CW.dateImmat}}>Immatriculée le</th>
-              <th style={{...ths,width:CW.age,minWidth:CW.age}}>Âge</th>
+              <th style={{...ths,width:CW.age,minWidth:CW.age}} title={"Alerte au-delà de "+SEUIL_AGE_ALERTE+" mois · pré-alerte à "+SEUIL_AGE_PREALERTE+" mois"}>Âge</th>
               <th style={{...ths,width:CW.equipements,minWidth:CW.equipements}}>Finitions/Options</th>
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
@@ -1213,9 +1464,14 @@ function App(){
               {days.map((d,i)=>{
                 const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                 return(
-                  <th key={i} style={{...ths,width:colW,minWidth:colW,maxWidth:colW,padding:"3px 0",textAlign:"center",borderRight:iT?"2px solid #2563eb":"1px solid #f1f5f9",borderLeft:iT?"2px solid #2563eb":"none",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
-                    <div style={{fontSize:7,color:iT?"#2563eb":"#9ca3af",lineHeight:1}}>{DS[d.getDay()]}</div>
-                    <div style={{fontSize:9,fontWeight:iT?800:600,color:iT?"#2563eb":iW?"#bbb":"#374151",lineHeight:1.3}}>{d.getDate()}</div>
+                  <th key={i} style={{...ths,width:colW,minWidth:colW,maxWidth:colW,padding:"4px 0 5px",textAlign:"center",
+                    borderRight:iT?"none":"1px solid #f1f5f9",
+                    borderLeft:iT?"2px solid #ef4444":"none",
+                    background:iW?"#f4f6f9":"#fbfcfe"}}>
+                    <div style={{fontSize:7.5,color:iT?"#ef4444":"#a8b3c1",lineHeight:1,fontWeight:700,letterSpacing:.2}}>{DS[d.getDay()]}</div>
+                    {iT
+                      ? <div style={{margin:"2px auto 0",width:16,height:16,borderRadius:"50%",background:"#ef4444",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 4px rgba(239,68,68,.5)"}}>{d.getDate()}</div>
+                      : <div style={{fontSize:9.5,fontWeight:700,color:iW?"#c2cbd6":"#334155",lineHeight:1.5}}>{d.getDate()}</div>}
                   </th>
                 );
               })}
@@ -1227,6 +1483,12 @@ function App(){
               const isPret=vp.some(p=>p.debut<=tISO&&p.fin>=tISO);
               const bg=ri%2===0?"#fff":"#f9fafb";
               const ec=EV_COLORS[v.event]||"#6b7280";
+              const kmInfo=kmVehicule(v,vp);
+              const nKm=niveauKm(kmInfo.km);
+              const mAge=ageMois(v.dateImmat);
+              const nAge=niveauAge(mAge);
+              const aRenouveler = nKm==="alerte"||nAge==="alerte";
+              const aSurveiller = !aRenouveler && (nKm==="prealerte"||nAge==="prealerte");
               const td={fontSize:10,color:"#374151",borderRight:"1px solid #f1f5f9",height:ROW,background:bg,padding:"0 4px",overflow:"hidden",verticalAlign:"middle"};
               return(
                 <tr key={v.id} style={{height:ROW}}>
@@ -1234,13 +1496,18 @@ function App(){
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}>
                       <span onClick={()=>openNew(v.id)} style={{cursor:"pointer",color:isPret?"#d97706":"#0c1a2e",display:"flex",alignItems:"center",gap:3,flex:1,overflow:"hidden"}}>
                         {isPret&&<span style={{fontSize:7,background:"#fef3c7",color:"#d97706",borderRadius:3,padding:"1px 3px",fontWeight:800,flexShrink:0}}>PRÊT</span>}
+                        {(aRenouveler||aSurveiller)&&(
+                          <span title={(nKm==="alerte"?"Kilométrage > "+fmtKm(SEUIL_KM_ALERTE)+" km. ":nKm==="prealerte"?"Kilométrage proche du seuil. ":"")+(nAge==="alerte"?"Véhicule de plus de "+SEUIL_AGE_ALERTE+" mois.":nAge==="prealerte"?"Véhicule proche de "+SEUIL_AGE_ALERTE+" mois.":"")+" → à renouveler"}
+                            style={{width:7,height:7,borderRadius:"50%",flexShrink:0,background:aRenouveler?"#dc2626":"#f59e0b",boxShadow:"0 0 0 2px "+(aRenouveler?"#fee2e2":"#fef3c7")}}/>
+                        )}
                         <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.id}</span>
                       </span>
                       <div data-interactive="1" style={{display:"flex",gap:1,flexShrink:0,position:"relative"}}>
-                        <button onClick={e=>{e.stopPropagation();genContrat(v);}} title="Générer contrat" style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 1px",lineHeight:1}}>📄</button>
-                        <button onClick={e=>{e.stopPropagation();setMoveMenuFor(moveMenuFor===v.id?null:v.id);}} title="Déplacer vers un autre parc" style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 1px",lineHeight:1}}>🔀</button>
-                        <button onClick={e=>{e.stopPropagation();toggleHide(v.id);}} title="Masquer" style={{background:"none",border:"none",cursor:"pointer",color:"#e5e7eb",fontSize:11,padding:"0 1px",lineHeight:1}}>⊗</button>
-                        <button onClick={e=>{e.stopPropagation();if(confirm("Archiver "+v.id+" ? Il sera masqué du calendrier mais consultable dans l'archive."))archiveVhl(v.id);}} title="Archiver" style={{background:"none",border:"none",cursor:"pointer",color:"#fbbf24",fontSize:11,padding:"0 1px",lineHeight:1}}>🗃️</button>
+                        <button onClick={e=>{e.stopPropagation();genContrat(v);}} title="Générer le contrat de prêt" style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:0,display:"flex"}}><Ic n="doc" s={13} c="#64748b"/></button>
+                        <button onClick={e=>{e.stopPropagation();setMoveMenuFor(moveMenuFor===v.id?null:v.id);}} title="Déplacer vers un autre parc" style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:0,display:"flex"}}><Ic n="swap" s={13} c="#64748b"/></button>
+                        <button onClick={e=>{e.stopPropagation();toModernisation(v.id);}} title="Passer ce véhicule en modernisation (sortie temporaire du parc)" style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:0,display:"flex"}}><Ic n="tool" s={13} c="#0891b2"/></button>
+                        <button onClick={e=>{e.stopPropagation();toggleHide(v.id);}} title="Masquer cette ligne" style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:0,display:"flex"}}><Ic n="hide" s={13} c="#c9d2dd"/></button>
+                        <button onClick={e=>{e.stopPropagation();if(confirm("Archiver "+v.id+" ? Il sera masqué du calendrier mais consultable dans l'archive.\n\nPour une sortie TEMPORAIRE (modernisation), utilisez plutôt l'icône outil : elle est réversible."))archiveVhl(v.id);}} title="Archiver définitivement" style={{background:"none",border:"none",cursor:"pointer",padding:"1px 2px",lineHeight:0,display:"flex"}}><Ic n="archive" s={13} c="#b39338"/></button>
                         {moveMenuFor===v.id&&(
                           <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:16,right:0,background:"#fff",border:"1.5px solid #e5e7eb",borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.15)",zIndex:50,padding:6,width:150}}>
                             <div style={{fontSize:9,fontWeight:800,color:"#6b7280",textTransform:"uppercase",padding:"2px 6px",marginBottom:2}}>Déplacer vers :</div>
@@ -1262,8 +1529,17 @@ function App(){
                   <td style={{...td,color:"#047857"}}><EditCell value={v.moteur} onSave={val=>upField(v.id,"moteur",val)}/></td>
                   <td style={{...td,color:"#7c3aed",fontWeight:600}}><EditCell value={v.fin} onSave={val=>upField(v.id,"fin",val)}/></td>
                   <td style={{...td}}><EditCell value={v.couleur} onSave={val=>upField(v.id,"couleur",val)}/></td>
+                  <td style={{...td,background:nKm==="ok"||nKm==="none"?bg:NIV[nKm].bg}}>
+                    <EditCell value={v.km?fmtKm(kmNum(v.km)):""} onSave={val=>upField(v.id,"km",val)}
+                      style={{fontWeight:(nKm==="alerte"||nKm==="prealerte")?800:600,color:NIV[nKm].fg,fontSize:10,fontVariantNumeric:"tabular-nums"}}
+                      placeholder={kmInfo.km!==null
+                        ? <span title="Relevé du dernier retour confirmé. Cliquez pour saisir une valeur manuelle." style={{fontSize:10,fontWeight:(nKm==="alerte"||nKm==="prealerte")?800:600,color:NIV[nKm].fg,fontVariantNumeric:"tabular-nums",opacity:0.85,fontStyle:"italic"}}>{fmtKm(kmInfo.km)}</span>
+                        : null}/>
+                  </td>
                   <td style={{...td}}><EditCell value={v.dateImmat} onSave={val=>upField(v.id,"dateImmat",val)} type="date"/></td>
-                  <td style={{...td,color:"#6b7280",fontSize:10}}>{ageVehicule(v.dateImmat)}</td>
+                  <td style={{...td,background:nAge==="ok"||nAge==="none"?bg:NIV[nAge].bg}}>
+                    <span style={{fontSize:10,fontWeight:nAge==="alerte"||nAge==="prealerte"?800:500,color:NIV[nAge].fg}}>{ageVehicule(v.dateImmat)||"—"}</span>
+                  </td>
                   <td style={{...td}}><EditCell value={v.equipements} onSave={val=>upField(v.id,"equipements",val)} style={{fontSize:10}}/></td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
                     <EditCell value={v.event} onSave={val=>upField(v.id,"event",val)} isSelect={true} opts={EVENTS_LIST}
@@ -1283,29 +1559,32 @@ function App(){
                         const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
                         return(
                           <div key={i} onClick={()=>openNew(v.id)}
-                            style={{width:colW,minWidth:colW,height:"100%",flexShrink:0,borderRight:iT?"2px solid #93c5fd":"1px solid #f1f5f9",borderLeft:iT?"2px solid #93c5fd":"none",cursor:"pointer",background:iT?"rgba(219,234,254,0.35)":iW?"rgba(0,0,0,0.02)":"transparent"}}
+                            style={{width:colW,minWidth:colW,height:"100%",flexShrink:0,
+                              borderRight:iT?"none":"1px solid #f4f6f9",
+                              borderLeft:iT?"2px solid #ef4444":"none",
+                              cursor:"pointer",background:iT?"rgba(239,68,68,0.05)":iW?"rgba(15,23,42,0.022)":"transparent"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
-                            onMouseLeave={e=>e.currentTarget.style.background=iT?"rgba(219,234,254,0.35)":iW?"rgba(0,0,0,0.02)":"transparent"}/>
+                            onMouseLeave={e=>e.currentTarget.style.background=iT?"rgba(239,68,68,0.05)":iW?"rgba(15,23,42,0.022)":"transparent"}/>
                         );
                       })}
                       {vp.map(pr=>{
                         const bar=getBar(pr); if(!bar)return null;
                         const enRetard = !pr.retourConfirme && pr.fin<tISO;
                         const dureeJ = Math.round((parseD(pr.fin)-parseD(pr.debut))/86400000)+1;
+                        const cb = couleurBarre(dureeJ,enRetard);
                         return(
                           <div key={pr.id} onClick={e=>openEdit(v.id,pr,e)} data-interactive="1"
-                            title={pr.personne+" · "+pr.debut+" → "+pr.fin+(enRetard?" · EN RETARD":"")}
-                            style={{position:"absolute",top:3,height:ROW-6,left:bar.left,width:bar.width,
-                              background:enRetard?"#dc2626":pr.color,
-                              borderRadius:7,display:"flex",alignItems:"center",paddingLeft:6,paddingRight:4,cursor:"pointer",overflow:"hidden",
-                              boxShadow:enRetard?"0 1px 6px rgba(220,38,38,0.4)":"0 1px 3px rgba(0,0,0,0.12)",
-                              border:enRetard?"1.5px solid #fca5a5":"1px solid rgba(255,255,255,0.25)",
-                              zIndex:2,gap:4}}>
-                            <span style={{fontSize:9,flexShrink:0}}>{enRetard?"🚨":pr.departConfirme?"✅":"⏳"}</span>
-                            <span style={{fontSize:9,fontWeight:700,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1}}>
-                              {pr.personne}</span>
-                            {bar.width>60&&<span style={{fontSize:8,color:"rgba(255,255,255,0.85)",flexShrink:0,fontWeight:600}}>{dureeJ}j</span>}
-                            {pr.retourConfirme&&<span style={{fontSize:9,flexShrink:0}}>✅</span>}
+                            title={pr.personne+" · "+(pr.debut||"").split("-").reverse().join("/")+" → "+(pr.fin||"").split("-").reverse().join("/")+" · "+dureeJ+" jour"+(dureeJ>1?"s":"")+(enRetard?" · EN RETARD":"")}
+                            style={{position:"absolute",top:4,height:ROW-8,left:bar.left,width:bar.width,
+                              background:cb,
+                              borderRadius:8,display:"flex",alignItems:"center",paddingLeft:7,paddingRight:7,cursor:"pointer",overflow:"hidden",
+                              boxShadow:enRetard?"0 2px 8px rgba(220,38,38,.35)":"0 1px 3px rgba(15,23,42,.18)",
+                              zIndex:2,gap:6}}>
+                            <Ic n={enRetard?"alert":pr.departConfirme?"check":"clock"} s={11} c="rgba(255,255,255,.9)" w={2.2}/>
+                            <span style={{fontSize:10,fontWeight:700,color:"#fff",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,letterSpacing:.1,lineHeight:1}}>
+                              {pr.personne}{enRetard&&bar.width>190?" — RETOUR EN RETARD":""}</span>
+                            {bar.width>72&&<span style={{fontSize:9,color:"rgba(255,255,255,.82)",flexShrink:0,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{dureeJ}j</span>}
+                            {pr.retourConfirme&&bar.width>52&&<Ic n="check" s={11} c="rgba(255,255,255,.9)" w={2.4}/>}
                           </div>
                         );
                       })}
@@ -1329,11 +1608,33 @@ function App(){
       </div>
 
         {/* SCROLLBAR HORIZONTALE TOUJOURS ACCESSIBLE */}
-        <div ref={mirrorScrollRef} onScroll={onMirrorScroll}
-          style={{flexShrink:0,overflowX:"auto",overflowY:"hidden",height:14,borderTop:"1px solid #e5e7eb",background:"#fafbfc"}}>
+        <div ref={mirrorScrollRef} onScroll={onMirrorScroll} className="hbar"
+          title="Faire défiler le calendrier — molette + Maj, ou glisser directement dans la grille"
+          style={{flexShrink:0,overflowX:"auto",overflowY:"hidden",height:17,borderTop:"1px solid #e6ecf3",background:"#eef2f7"}}>
           <div style={{height:1,width:(compactMode?CW.immat:FIXED)+days.length*colW}}/>
         </div>
+
+        {/* LEGENDE */}
+        <div style={{flexShrink:0,borderTop:"1px solid #eef2f7",background:"#fbfcfe",borderRadius:"0 0 16px 16px",
+          padding:"8px 16px",display:"flex",alignItems:"center",gap:18,flexWrap:"wrap"}}>
+          {[
+            {c:"#16a34a",t:"Court terme (≤ 3 jours)"},
+            {c:"#2563eb",t:"Moyen terme (4–14 jours)"},
+            {c:"#7c3aed",t:"Long terme (> 14 jours)"},
+            {c:"#dc2626",t:"Retour en retard"},
+          ].map(l=>(
+            <span key={l.t} style={{display:"flex",alignItems:"center",gap:6,fontSize:10.5,color:"#64748b",fontWeight:600}}>
+              <span style={{width:9,height:9,borderRadius:"50%",background:l.c,flexShrink:0}}/>{l.t}
+            </span>
+          ))}
+          <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:16,fontSize:10,color:"#a2adbb",fontWeight:600}}>
+            <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#dc2626",boxShadow:"0 0 0 2px #fee2e2"}}/>à renouveler ({fmtKm(SEUIL_KM_ALERTE)} km ou {SEUIL_AGE_ALERTE} mois)</span>
+            <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:7,height:7,borderRadius:"50%",background:"#f59e0b",boxShadow:"0 0 0 2px #fef3c7"}}/>à surveiller</span>
+          </span>
+        </div>
       </div>
+
+      </div>{/* /colonne principale */}
 
       {/* NOTIFICATION IMPORT */}
       {importResult&&(
@@ -1344,6 +1645,77 @@ function App(){
           }
         </div>
       )}
+
+      {/* MODAL MODERNISATION */}
+      {showModernisation&&(()=>{
+        const modDuParc = modernisation.filter(v=>(v.parcOrigine||v.parc)===parcActif);
+        const thm={padding:"7px 9px",background:"#f8fafc",fontWeight:800,color:"#64748b",textAlign:"left",borderBottom:"1px solid #e6ecf3",whiteSpace:"nowrap",fontSize:10,textTransform:"uppercase",letterSpacing:.4};
+        const tdm={padding:"7px 9px",borderBottom:"1px solid #f1f5f9"};
+        return(
+        <div style={{position:"fixed",inset:0,background:"rgba(8,15,28,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>{setShowModernisation(false);setModMenuFor(null);}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:18,padding:24,width:"92%",maxWidth:880,maxHeight:"84vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.3)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{display:"flex",alignItems:"center",gap:11}}>
+                <div style={{width:38,height:38,borderRadius:12,background:"#e2f4f8",display:"flex",alignItems:"center",justifyContent:"center"}}><Ic n="tool" s={19} c="#0891b2"/></div>
+                <div>
+                  <div style={{fontSize:16.5,fontWeight:800,color:"#0f172a",letterSpacing:-.2}}>Véhicules en modernisation — Parc {parcActif}</div>
+                  <div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{modDuParc.length} véhicule(s) ici · {modernisation.length} tous parcs confondus</div>
+                </div>
+              </div>
+              <button onClick={()=>{setShowModernisation(false);setModMenuFor(null);}} style={{background:"#f1f5f9",border:"none",borderRadius:9,width:30,height:30,cursor:"pointer",fontSize:14,color:"#64748b"}}>✕</button>
+            </div>
+            <div style={{fontSize:11,color:"#64748b",background:"#f8fafc",border:"1px solid #eef2f7",borderRadius:10,padding:"8px 11px",margin:"12px 0 14px",lineHeight:1.5}}>
+              Un véhicule en modernisation est <b>sorti temporairement</b> du calendrier : il n'apparaît plus dans la grille et n'est plus réservable.
+              Son parc d'origine est mémorisé — la remise en parc le replace au bon endroit, ou dans un autre parc si vous le choisissez.
+            </div>
+            {modDuParc.length===0
+              ? <div style={{textAlign:"center",color:"#a2adbb",padding:44,fontSize:13}}>Aucun véhicule en modernisation pour le parc {parcActif}</div>
+              : <div style={{overflow:"auto",flex:1}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
+                    <thead>
+                      <tr>{["Immat","Modèle","Moteur","Couleur","Parc d'origine","Depuis le","Remise en parc"].map(h=>(
+                        <th key={h} style={thm}>{h}</th>
+                      ))}</tr>
+                    </thead>
+                    <tbody>
+                      {modDuParc.map((v,i)=>(
+                        <tr key={v.id} style={{background:i%2===0?"#fff":"#fbfcfe"}}>
+                          <td style={{...tdm,fontWeight:800,color:"#0f172a"}}>{v.id}</td>
+                          <td style={{...tdm,color:"#1d4ed8",fontWeight:600}}>{v.modele}</td>
+                          <td style={{...tdm,color:"#047857"}}>{v.moteur}</td>
+                          <td style={tdm}>{v.couleur}</td>
+                          <td style={tdm}><span style={{fontWeight:700,fontSize:10.5,color:"#3730a3",background:"#e0e7ff",borderRadius:6,padding:"2px 7px"}}>{v.parcOrigine||v.parc}</span></td>
+                          <td style={{...tdm,color:"#94a3b8"}}>{v.modernisationAt||"—"}</td>
+                          <td style={{...tdm,position:"relative"}}>
+                            <button onClick={()=>setModMenuFor(modMenuFor===v.id?null:v.id)}
+                              style={{display:"flex",alignItems:"center",gap:6,border:"1px solid #bae6fd",background:"#f0f9ff",color:"#0369a1",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                              <Ic n="back" s={13} c="#0369a1"/> Remettre en parc
+                            </button>
+                            {modMenuFor===v.id&&(
+                              <div style={{position:"absolute",top:34,right:8,background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 12px 32px rgba(15,23,42,.18)",zIndex:60,padding:6,width:172}}>
+                                <div style={{fontSize:9,fontWeight:800,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.4,padding:"3px 7px",marginBottom:2}}>Replacer dans :</div>
+                                {[...new Set([v.parcOrigine||v.parc,...PARCS_VISIBLES])].map(p=>(
+                                  <button key={p} onClick={()=>{retourDeModernisation(v.id,p);setModMenuFor(null);}}
+                                    style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%",textAlign:"left",padding:"6px 8px",border:"none",background:"none",cursor:"pointer",fontSize:11.5,fontWeight:700,color:"#334155",borderRadius:7}}
+                                    onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
+                                    onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                                    <span>Parc {p}</span>
+                                    {p===(v.parcOrigine||v.parc)&&<span style={{fontSize:9,color:"#0891b2",fontWeight:800}}>origine</span>}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+            }
+          </div>
+        </div>
+        );
+      })()}
 
       {/* MODAL ARCHIVE */}
       {showArchive&&(()=>{
