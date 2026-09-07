@@ -61,6 +61,21 @@ const INIT = [
   {id:"GW-472-QT",modele:"E-C3",           moteur:"ELEC 80KW",  fin:"",          couleur:"ROUGE ELIXIR",                  event:"2A",           parc:"2525",vin:"VR7CBZYAXRT042337"},
   {id:"GW-753-RV",modele:"E-C3",           moteur:"ELEC 80KW",  fin:"",          couleur:"ROUGE ELIXIR",                  event:"4V",           parc:"2540",vin:"VR7CBZYA8RT042336"},
   {id:"GW-414-QY",modele:"E-C3",           moteur:"ELEC 80KW",  fin:"",          couleur:"ROUGE ELIXIR",                  event:"4V",           parc:"2540",vin:"VR7CBZYA4RT052152"},
+  {id:"HE-074-MR",modele:"AMI ONE FIN J ELECTR",moteur:"",fin:"",couleur:"NIGHT SEPIA",event:"2A",parc:"2540",vin:"VR79AZ2D0S5013925"},
+  {id:"HK-511-LV",modele:"1CRE FIN R ELECTR M",moteur:"",fin:"",couleur:"NOIR PERLA NERA",event:"2A",parc:"2540",vin:"VR7KCZKZ8TL003180"},
+  {id:"HK-707-LF",modele:"AMI ONE BUGGY ELECT",moteur:"",fin:"",couleur:"P209 SMOKED BRA",event:"2A",parc:"2540",vin:"VR79AZ2D5S5069861"},
+  {id:"HJ-028-GA",modele:"EC3 H ELECRED COLLEC",moteur:"",fin:"",couleur:"EWP BLANC BANQUISE",event:"2A",parc:"2540",vin:"VR7CBZYA7ST228424"},
+  {id:"HE-395-CP",modele:"AMI ONE FIN J ELECTR",moteur:"",fin:"",couleur:"NIGHT SEPIA",event:"2A",parc:"2540",vin:"VR79AZ2D9S5030366"},
+  {id:"FY-084-GC",modele:"AMI ONE ELECTRQUE",moteur:"",fin:"",couleur:"BLEU ARTHURIEN",event:"2A",parc:"2540",vin:"VR79AZ2CAL5056654"},
+  {id:"VIN_VR7ATTENTPT630799",modele:"1CSC FIN N ELEC REDU",moteur:"",fin:"",couleur:"BLEU MONTE CARLO",event:"2A",parc:"2540",vin:"VR7ATTENTPT630799"},
+  {id:"HM-286-BM",modele:"E C3 FIN N ELEC REDU",moteur:"",fin:"",couleur:"KTV NOIR PERLA NERA",event:"2A",parc:"2540",vin:"VR7CBZYA5TZ820452"},
+  {id:"GB-096-HG",modele:"C3AIR SHINPK 12EBA6S",moteur:"",fin:"",couleur:"GRIS ARTENSE",event:"2A",parc:"2540",vin:"VF72RHNS1M4018214"},
+  {id:"HJ-335-AV",modele:"C3 H 12EMHEV COLLEC",moteur:"",fin:"",couleur:"BLANC BANQUISE",event:"2A",parc:"2540",vin:"VR7CGHPY2ST284300"},
+  {id:"HE-316-ND",modele:"AMI ONE FIN J ELECTR",moteur:"",fin:"",couleur:"NIGHT SEPIA",event:"2A",parc:"2540",vin:"VR79AZ2D8S5014031"},
+  {id:"HK-608-JL",modele:"1CRE FIN R 16E PHEV",moteur:"",fin:"",couleur:"BLANC OKENITE",event:"2A",parc:"2540",vin:"VR7KBDGK3SL051105"},
+  {id:"VIN_VF7SXHNPYKT660544",modele:"NEWC3 5P FN R 12EA6S",moteur:"",fin:"",couleur:"SABLE",event:"2A",parc:"2540",vin:"VF7SXHNPYKT660544"},
+  {id:"VIN_VF3YE3MFC12J92769",modele:"BXFT440L4H2HDI2.0",moteur:"",fin:"",couleur:"",event:"2A",parc:"2540",vin:"VF3YE3MFC12J92769"},
+  {id:"VIN_VR79AZ2D0T5081692",modele:"AMI ONE FIN R ELECTR",moteur:"",fin:"",couleur:"P209 SMOKED BRA",event:"2A",parc:"2540",vin:"VR79AZ2D0T5081692"},
   {id:"HK-685-BZ",modele:"E-C3 MAX",       moteur:"ELEC 113KW", fin:"MAX",        couleur:"ROUGE ELIXIR",                  event:"2A",           parc:"2525",vin:"VR7CBZYA8TT094170"},
   {id:"HA-241-JL",modele:"NEW C4 ELEC",    moteur:"ELEC 115KW", fin:"MAX",        couleur:"MANHATTAN GREEN",               event:"2A",           parc:"2525",vin:"VR7BCZKW5RE077207"},
   {id:"HA-235-JL",modele:"NEW C4X ELEC",   moteur:"ELEC 115KW", fin:"MAX",        couleur:"BLEU ECLIPSE",                  event:"3B",           parc:"2525",vin:"VR7BFZKW3RE075463"},
@@ -963,7 +978,7 @@ function App(){
   const hiddenList=vhl.filter(v=>hidden[v.id]);
   const parcCounts=useMemo(()=>{
     const c={};
-    ["2525","2562","2527","2516"].forEach(p=>{c[p]=vhl.filter(v=>v.parc===p).length;});
+    ["2525","2523","2540","2562","2527","2516"].forEach(p=>{c[p]=vhl.filter(v=>v.parc===p).length;});
     return c;
   },[vhl]);
   const ok=form.debut&&form.fin&&form.personne.trim()&&form.fin>=form.debut;
@@ -1149,6 +1164,7 @@ function App(){
         {[
           {id:"2525",label:"2525",sub:"Marketing Citroën",color:"#2563eb"},
           {id:"2523",label:"2523",sub:"Régions Citroën/DS",color:"#059669"},
+          {id:"2540",label:"2540",sub:"Parc 2540",color:"#ea580c"},
           {id:"2562",label:"2562",sub:"Partenariat Citroën",color:"#0891b2"},
           {id:"2527",label:"2527",sub:"Marketing DS France",color:"#7c3aed"},
           {id:"2516",label:"2516",sub:"Partenariat DS",color:"#be185d"},
