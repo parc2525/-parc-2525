@@ -480,7 +480,9 @@ function App(){
   const [form,setForm]=useState({debut:"",fin:"",personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});
   const [addOpen,setAddOpen]=useState(false);
   const [nim,setNim]=useState(""); const [nmo,setNmo]=useState("");
-  const [saved,setSaved]=useState(false);
+  const [syncStatus,setSyncStatus]=useState("idle"); // "idle" | "saving" | "synced" | "error"
+  const [syncErrorMsg,setSyncErrorMsg]=useState("");
+  const lastPersistArgsRef=useRef(null);
   const [parcActif,setParcActif]=useState("2525");
   const PARCS_VISIBLES = role==="manager2525" ? ["2525","2523"] : PARCS_LIST;
   useEffect(()=>{ if(role==="manager2525"&&!PARCS_VISIBLES.includes(parcActif)) setParcActif("2525"); },[role,parcActif]);
@@ -656,8 +658,16 @@ function App(){
     const oc = o!==undefined ? o : ocvsRef.current;
     const och = oh!==undefined ? oh : ocvsHistoryRef.current;
     try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och}));}catch(_){}
+
+    // Conserve les arguments de cette tentative pour permettre un "Réessayer" fidèle en cas d'échec
+    lastPersistArgsRef.current = [v,p,h,ar,oc,och];
+
+    setSyncStatus("saving");
+    setSyncErrorMsg("");
+
+    let writePromise;
     try{
-      db.ref("parc2525").set({
+      writePromise = db.ref("parc2525").set({
         vhl: JSON.stringify(v),
         prets: JSON.stringify(p),
         hidden: JSON.stringify(h),
@@ -666,8 +676,32 @@ function App(){
         ocvsHistory: JSON.stringify(och),
         updatedAt: Date.now()
       });
-    }catch(_){}
-    setSaved(true);setTimeout(()=>setSaved(false),1500);
+    }catch(errSync){
+      // Erreur synchrone (ex: db mal initialisée) — traitée comme un échec de synchronisation
+      setSyncStatus("error");
+      setSyncErrorMsg(String(errSync&&errSync.message||errSync));
+      return;
+    }
+
+    if(writePromise && typeof writePromise.then==="function"){
+      writePromise
+        .then(()=>{ setSyncStatus("synced"); setTimeout(()=>setSyncStatus(prev=>prev==="synced"?"idle":prev),1500); })
+        .catch(err=>{
+          console.error("Échec de synchronisation Firebase :", err);
+          setSyncStatus("error");
+          setSyncErrorMsg(String(err&&err.message||err));
+        });
+    }else{
+      // Le SDK n'a pas renvoyé de Promise exploitable (cas inattendu) : on ne peut pas confirmer,
+      // on ne ment donc jamais en affichant "Synchronisé" sans confirmation réelle.
+      setSyncStatus("error");
+      setSyncErrorMsg("Réponse Firebase inattendue (pas de confirmation d'écriture).");
+    }
+  }
+  function retrySync(){
+    if(!lastPersistArgsRef.current) return;
+    const [v,p,h,ar,oc,och] = lastPersistArgsRef.current;
+    persist(v,p,h,ar,oc,och);
   }
   function save(v,p,h,a){setVhl(v);setPrets(p);setHidden(h);if(a!==undefined)setArchived(a);persist(v,p,h,a);}
 
@@ -1000,7 +1034,14 @@ function App(){
           <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>🚗 Calendrier des prêts</div>
         </div>
         <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          {saved&&<span style={{fontSize:10,color:"#86efac",fontWeight:700,background:"rgba(0,0,0,0.2)",padding:"3px 8px",borderRadius:5}}>✓ Synchronisé</span>}
+          {syncStatus==="saving"&&<span style={{fontSize:10,color:"#fcd34d",fontWeight:700,background:"rgba(0,0,0,0.2)",padding:"3px 8px",borderRadius:5}}>⏳ Enregistrement…</span>}
+          {syncStatus==="synced"&&<span style={{fontSize:10,color:"#86efac",fontWeight:700,background:"rgba(0,0,0,0.2)",padding:"3px 8px",borderRadius:5}}>✓ Synchronisé</span>}
+          {syncStatus==="error"&&(
+            <span style={{fontSize:10,color:"#fff",fontWeight:700,background:"#dc2626",padding:"3px 8px",borderRadius:5,display:"flex",alignItems:"center",gap:6}} title={syncErrorMsg}>
+              ⚠️ Erreur de synchronisation
+              <button onClick={retrySync} style={{background:"#fff",color:"#dc2626",border:"none",borderRadius:4,padding:"1px 7px",cursor:"pointer",fontSize:9,fontWeight:800}}>Réessayer</button>
+            </span>
+          )}
           <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="🔍 Rechercher…"
             style={{padding:"5px 10px",borderRadius:7,border:"none",fontSize:11,outline:"none",background:"rgba(255,255,255,0.12)",color:"#fff",width:140}}/>
           <div style={{display:"flex",alignItems:"center",gap:2,background:"rgba(255,255,255,0.1)",borderRadius:8,padding:"4px 7px"}}>
