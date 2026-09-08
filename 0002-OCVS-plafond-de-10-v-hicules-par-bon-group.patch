@@ -1,0 +1,55 @@
+From 7de460e85bc49758818827acac5d5e16ac3529c7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 8 Sep 2026 08:05:01 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?OCVS:=20plafond=20de=2010=20v=C3=A9hicules?=
+ =?UTF-8?q?=20par=20bon=20group=C3=A9?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Sangaré confirme un maximum de 10 châssis par bon (au-delà, un second
+bon). Le bouton "+ Ajouter un châssis" est désactivé et remplacé par un
+message une fois 10 véhicules atteints ; testé (ajout forcé 15x → reste
+plafonné à 10).
+---
+ index.html | 17 +++++++++++++----
+ 1 file changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/index.html b/index.html
+index 9d87d7a..dcf1cb6 100644
+--- a/index.html
++++ b/index.html
+@@ -1830,7 +1830,12 @@ function App(){
+           list[idx]={...list[idx],[k]:e.target.value};
+           return {...f,vehicules:list};
+         });
+-        const ajouterChassis=()=>setOcvsForm(f=>({...f,vehicules:[...(f.vehicules&&f.vehicules.length?f.vehicules:[{}]),{}]}));
++        const OCVS_MAX_VEHICULES_PAR_BON=10;
++        const ajouterChassis=()=>setOcvsForm(f=>{
++          const list=(f.vehicules&&f.vehicules.length?f.vehicules:[{}]);
++          if(list.length>=OCVS_MAX_VEHICULES_PAR_BON) return f;
++          return {...f,vehicules:[...list,{}]};
++        });
+         const retirerChassis=(idx)=>setOcvsForm(f=>{
+           const list=(f.vehicules||[{}]).filter((_,i)=>i!==idx);
+           return {...f,vehicules:list.length?list:[{}]};
+@@ -1936,9 +1941,13 @@ function App(){
+               ))}
+ 
+               {ocvsModal.mode==="new"&&(
+-                <button onClick={ajouterChassis} style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #c7d2fe",background:"#f8faff",cursor:"pointer",fontSize:11,fontWeight:700,color:"#4338ca",marginBottom:16}}>
+-                  ＋ Ajouter un châssis à ce bon
+-                </button>
++                vehicules.length>=OCVS_MAX_VEHICULES_PAR_BON
++                  ? <div style={{textAlign:"center",fontSize:10,color:"#9ca3af",fontWeight:700,marginBottom:16,padding:"9px",border:"1.5px dashed #e5e7eb",borderRadius:8}}>
++                      Maximum {OCVS_MAX_VEHICULES_PAR_BON} véhicules par bon — au-delà, crée un second bon
++                    </div>
++                  : <button onClick={ajouterChassis} style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #c7d2fe",background:"#f8faff",cursor:"pointer",fontSize:11,fontWeight:700,color:"#4338ca",marginBottom:16}}>
++                      ＋ Ajouter un châssis à ce bon ({vehicules.length}/{OCVS_MAX_VEHICULES_PAR_BON})
++                    </button>
+               )}
+ 
+               {(()=>{
+-- 
+2.43.0
+
