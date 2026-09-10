@@ -252,7 +252,7 @@ function ageVehicule(dateImmatISO){
 function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,event:52,parc:52,vin:130};
+const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
 const COL=20, ROW=37;
 
@@ -493,6 +493,28 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
   );
 }
 
+function NouvelleNoteAttendu({onAdd}){
+  const [texte,setTexte]=useState("");
+  function submit(){
+    if(!texte.trim())return;
+    onAdd(texte);
+    setTexte("");
+  }
+  return(
+    <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+      <textarea value={texte} onChange={e=>setTexte(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
+        placeholder="Ex : C5 Aircross Long Range attendu semaine prochaine, VIN à confirmer…"
+        rows={2}
+        style={{flex:1,padding:"9px 11px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none",fontFamily:"inherit",resize:"vertical"}}/>
+      <button onClick={submit} disabled={!texte.trim()}
+        style={{padding:"9px 14px",borderRadius:8,border:"none",background:texte.trim()?"#0c1a2e":"#e5e7eb",color:texte.trim()?"#fff":"#9ca3af",cursor:texte.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,flexShrink:0}}>
+        ＋ Ajouter
+      </button>
+    </div>
+  );
+}
+
 function App(){
   const today=new Date();
   const tISO=toISO(today);
@@ -521,6 +543,10 @@ function App(){
   const [ocvsHistory,setOcvsHistory]=useState({});
   const ocvsHistoryRef=useRef({});
   useEffect(()=>{ ocvsHistoryRef.current=ocvsHistory; },[ocvsHistory]);
+  const [vehiculesAttendus,setVehiculesAttendus]=useState([]);
+  const vehiculesAttendusRef=useRef([]);
+  useEffect(()=>{ vehiculesAttendusRef.current=vehiculesAttendus; },[vehiculesAttendus]);
+  const [showAttendus,setShowAttendus]=useState(false);
   const [showOcvs,setShowOcvs]=useState(false);
   const [ocvsModal,setOcvsModal]=useState(null);
   const [ocvsForm,setOcvsForm]=useState({});
@@ -606,6 +632,7 @@ function App(){
       let archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
       const ocvsParsed = typeof p.ocvs==="string"?JSON.parse(p.ocvs):(p.ocvs||[]);
       const ocvsHistoryParsed = typeof p.ocvsHistory==="string"?JSON.parse(p.ocvsHistory):(p.ocvsHistory||{});
+      const vehiculesAttendusParsed = typeof p.vehiculesAttendus==="string"?JSON.parse(p.vehiculesAttendus):(p.vehiculesAttendus||[]);
       // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
       if(archivedParsed&&archivedParsed.length){
         const seen=new Set();
@@ -626,6 +653,7 @@ function App(){
       setArchived(archivedParsed);
       setOcvsOrders(ocvsParsed);
       setOcvsHistory(ocvsHistoryParsed);
+      setVehiculesAttendus(vehiculesAttendusParsed);
     }
     // Écoute Firebase en temps réel
     try{
@@ -679,18 +707,15 @@ function App(){
     });
   }
 
-  function persist(v,p,h,a,o,oh){
+  function persist(v,p,h,a,o,oh,va){
     const ar = a!==undefined ? a : archivedRef.current;
     const oc = o!==undefined ? o : ocvsRef.current;
     const och = oh!==undefined ? oh : ocvsHistoryRef.current;
-    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och}));}catch(_){}
-
-    // Conserve les arguments de cette tentative pour permettre un "Réessayer" fidèle en cas d'échec
-    lastPersistArgsRef.current = [v,p,h,ar,oc,och];
-
+    const vat = va!==undefined ? va : vehiculesAttendusRef.current;
+    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och,vehiculesAttendus:vat}));}catch(_){}
+    lastPersistArgsRef.current = [v,p,h,ar,oc,och,vat];
     setSyncStatus("saving");
     setSyncErrorMsg("");
-
     let writePromise;
     try{
       writePromise = db.ref("parc2525").set({
@@ -700,15 +725,14 @@ function App(){
         archived: JSON.stringify(ar),
         ocvs: JSON.stringify(oc),
         ocvsHistory: JSON.stringify(och),
+        vehiculesAttendus: JSON.stringify(vat),
         updatedAt: Date.now()
       });
     }catch(errSync){
-      // Erreur synchrone (ex: db mal initialisée) — traitée comme un échec de synchronisation
       setSyncStatus("error");
       setSyncErrorMsg(String(errSync&&errSync.message||errSync));
       return;
     }
-
     if(writePromise && typeof writePromise.then==="function"){
       writePromise
         .then(()=>{ setSyncStatus("synced"); setTimeout(()=>setSyncStatus(prev=>prev==="synced"?"idle":prev),1500); })
@@ -718,16 +742,14 @@ function App(){
           setSyncErrorMsg(String(err&&err.message||err));
         });
     }else{
-      // Le SDK n'a pas renvoyé de Promise exploitable (cas inattendu) : on ne peut pas confirmer,
-      // on ne ment donc jamais en affichant "Synchronisé" sans confirmation réelle.
       setSyncStatus("error");
       setSyncErrorMsg("Réponse Firebase inattendue (pas de confirmation d'écriture).");
     }
   }
   function retrySync(){
     if(!lastPersistArgsRef.current) return;
-    const [v,p,h,ar,oc,och] = lastPersistArgsRef.current;
-    persist(v,p,h,ar,oc,och);
+    const [v,p,h,ar,oc,och,vat] = lastPersistArgsRef.current;
+    persist(v,p,h,ar,oc,och,vat);
   }
   function save(v,p,h,a){setVhl(v);setPrets(p);setHidden(h);if(a!==undefined)setArchived(a);persist(v,p,h,a);}
 
@@ -743,6 +765,22 @@ function App(){
         return newArchived;
       });
       return newVhl;
+    });
+  }
+
+  function addVehiculeAttendu(texte){
+    if(!texte||!texte.trim())return;
+    setVehiculesAttendus(prev=>{
+      const next=[...prev,{id:Date.now().toString()+Math.random().toString(36).slice(2,6),parc:parcActif,texte:texte.trim(),dateAjout:tISO}];
+      persist(vhl,prets,hidden,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+  function delVehiculeAttendu(id){
+    setVehiculesAttendus(prev=>{
+      const next=prev.filter(x=>x.id!==id);
+      persist(vhl,prets,hidden,undefined,undefined,undefined,next);
+      return next;
     });
   }
 
@@ -1087,6 +1125,7 @@ function App(){
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
           <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
+          <button onClick={()=>setShowAttendus(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📝 Véhicules attendus</button>
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
@@ -1297,6 +1336,7 @@ function App(){
               <th style={{...ths,width:CW.dateImmat,minWidth:CW.dateImmat}}>Immatriculée le</th>
               <th style={{...ths,width:CW.age,minWidth:CW.age}}>Âge</th>
               <th style={{...ths,width:CW.equipements,minWidth:CW.equipements}}>Finitions/Options</th>
+              <th style={{...ths,width:CW.observations,minWidth:CW.observations}}>Observations</th>
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
               <th style={{...ths,width:CW.vin,minWidth:CW.vin,borderRight:"2px solid #cbd5e1"}}>VIN / Châssis</th>
@@ -1356,6 +1396,7 @@ function App(){
                   <td style={{...td}}><EditCell value={v.dateImmat} onSave={val=>upField(v.id,"dateImmat",val)} type="date"/></td>
                   <td style={{...td,color:"#6b7280",fontSize:10}}>{ageVehicule(v.dateImmat)}</td>
                   <td style={{...td}}><EditCell value={v.equipements} onSave={val=>upField(v.id,"equipements",val)} style={{fontSize:10}}/></td>
+                  <td style={{...td}}><EditCell value={v.observations} onSave={val=>upField(v.id,"observations",val)} style={{fontSize:10}}/></td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
                     <EditCell value={v.event} onSave={val=>upField(v.id,"event",val)} isSelect={true} opts={EVENTS_LIST}
                       style={{fontWeight:800,fontSize:10,color:"#fff",background:ec,borderRadius:4,padding:"1px 5px",display:"inline-block"}}/>
@@ -1973,6 +2014,39 @@ function App(){
                 </div>
                 </>);
               })()}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL VÉHICULES ATTENDUS */}
+      {showAttendus&&(()=>{
+        const listeDuParc = vehiculesAttendus.filter(v=>v.parc===parcActif).sort((a,b)=>b.id.localeCompare(a.id));
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowAttendus(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"90%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📝 Véhicules attendus — Parc {parcActif}</div>
+                <button onClick={()=>setShowAttendus(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+              <div style={{fontSize:11,color:"#9ca3af",marginBottom:14}}>Notes libres pour les véhicules pas encore arrivés — à cocher/supprimer une fois qu'ils sont bien dans le parc.</div>
+
+              <NouvelleNoteAttendu onAdd={addVehiculeAttendu}/>
+
+              <div style={{overflow:"auto",flex:1,marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
+                {listeDuParc.length===0
+                  ? <div style={{textAlign:"center",color:"#9ca3af",padding:30,fontSize:13}}>Aucun véhicule attendu noté pour ce parc</div>
+                  : listeDuParc.map(v=>(
+                      <div key={v.id} style={{display:"flex",alignItems:"flex-start",gap:10,background:"#f8fafc",borderRadius:10,padding:"10px 12px"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:12,color:"#374151",whiteSpace:"pre-wrap"}}>{v.texte}</div>
+                          <div style={{fontSize:9,color:"#9ca3af",marginTop:4}}>Ajouté le {v.dateAjout.split("-").reverse().join("/")}</div>
+                        </div>
+                        <button onClick={()=>delVehiculeAttendu(v.id)} style={{background:"none",border:"none",color:"#d1d5db",cursor:"pointer",fontSize:13,flexShrink:0}}>🗑️</button>
+                      </div>
+                    ))
+                }
+              </div>
             </div>
           </div>
         );
