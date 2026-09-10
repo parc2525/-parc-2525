@@ -252,7 +252,7 @@ function ageVehicule(dateImmatISO){
 function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,event:52,parc:52,vin:130};
+const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
 const COL=20, ROW=37;
 
@@ -493,6 +493,28 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
   );
 }
 
+function NouvelleNoteAttendu({onAdd}){
+  const [texte,setTexte]=useState("");
+  function submit(){
+    if(!texte.trim())return;
+    onAdd(texte);
+    setTexte("");
+  }
+  return(
+    <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+      <textarea value={texte} onChange={e=>setTexte(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
+        placeholder="Ex : C5 Aircross Long Range attendu semaine prochaine, VIN à confirmer…"
+        rows={2}
+        style={{flex:1,padding:"9px 11px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none",fontFamily:"inherit",resize:"vertical"}}/>
+      <button onClick={submit} disabled={!texte.trim()}
+        style={{padding:"9px 14px",borderRadius:8,border:"none",background:texte.trim()?"#0c1a2e":"#e5e7eb",color:texte.trim()?"#fff":"#9ca3af",cursor:texte.trim()?"pointer":"not-allowed",fontSize:12,fontWeight:700,flexShrink:0}}>
+        ＋ Ajouter
+      </button>
+    </div>
+  );
+}
+
 function App(){
   const today=new Date();
   const tISO=toISO(today);
@@ -521,6 +543,10 @@ function App(){
   const [ocvsHistory,setOcvsHistory]=useState({});
   const ocvsHistoryRef=useRef({});
   useEffect(()=>{ ocvsHistoryRef.current=ocvsHistory; },[ocvsHistory]);
+  const [vehiculesAttendus,setVehiculesAttendus]=useState([]);
+  const vehiculesAttendusRef=useRef([]);
+  useEffect(()=>{ vehiculesAttendusRef.current=vehiculesAttendus; },[vehiculesAttendus]);
+  const [showAttendus,setShowAttendus]=useState(false);
   const [showOcvs,setShowOcvs]=useState(false);
   const [ocvsModal,setOcvsModal]=useState(null);
   const [ocvsForm,setOcvsForm]=useState({});
@@ -606,6 +632,7 @@ function App(){
       let archivedParsed = typeof p.archived==="string"?JSON.parse(p.archived):(p.archived||[]);
       const ocvsParsed = typeof p.ocvs==="string"?JSON.parse(p.ocvs):(p.ocvs||[]);
       const ocvsHistoryParsed = typeof p.ocvsHistory==="string"?JSON.parse(p.ocvsHistory):(p.ocvsHistory||{});
+      const vehiculesAttendusParsed = typeof p.vehiculesAttendus==="string"?JSON.parse(p.vehiculesAttendus):(p.vehiculesAttendus||[]);
       // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
       if(archivedParsed&&archivedParsed.length){
         const seen=new Set();
@@ -626,6 +653,7 @@ function App(){
       setArchived(archivedParsed);
       setOcvsOrders(ocvsParsed);
       setOcvsHistory(ocvsHistoryParsed);
+      setVehiculesAttendus(vehiculesAttendusParsed);
     }
     // Écoute Firebase en temps réel
     try{
@@ -679,18 +707,15 @@ function App(){
     });
   }
 
-  function persist(v,p,h,a,o,oh){
+  function persist(v,p,h,a,o,oh,va){
     const ar = a!==undefined ? a : archivedRef.current;
     const oc = o!==undefined ? o : ocvsRef.current;
     const och = oh!==undefined ? oh : ocvsHistoryRef.current;
-    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och}));}catch(_){}
-
-    // Conserve les arguments de cette tentative pour permettre un "Réessayer" fidèle en cas d'échec
-    lastPersistArgsRef.current = [v,p,h,ar,oc,och];
-
+    const vat = va!==undefined ? va : vehiculesAttendusRef.current;
+    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och,vehiculesAttendus:vat}));}catch(_){}
+    lastPersistArgsRef.current = [v,p,h,ar,oc,och,vat];
     setSyncStatus("saving");
     setSyncErrorMsg("");
-
     let writePromise;
     try{
       writePromise = db.ref("parc2525").set({
@@ -700,15 +725,14 @@ function App(){
         archived: JSON.stringify(ar),
         ocvs: JSON.stringify(oc),
         ocvsHistory: JSON.stringify(och),
+        vehiculesAttendus: JSON.stringify(vat),
         updatedAt: Date.now()
       });
     }catch(errSync){
-      // Erreur synchrone (ex: db mal initialisée) — traitée comme un échec de synchronisation
       setSyncStatus("error");
       setSyncErrorMsg(String(errSync&&errSync.message||errSync));
       return;
     }
-
     if(writePromise && typeof writePromise.then==="function"){
       writePromise
         .then(()=>{ setSyncStatus("synced"); setTimeout(()=>setSyncStatus(prev=>prev==="synced"?"idle":prev),1500); })
@@ -718,16 +742,14 @@ function App(){
           setSyncErrorMsg(String(err&&err.message||err));
         });
     }else{
-      // Le SDK n'a pas renvoyé de Promise exploitable (cas inattendu) : on ne peut pas confirmer,
-      // on ne ment donc jamais en affichant "Synchronisé" sans confirmation réelle.
       setSyncStatus("error");
       setSyncErrorMsg("Réponse Firebase inattendue (pas de confirmation d'écriture).");
     }
   }
   function retrySync(){
     if(!lastPersistArgsRef.current) return;
-    const [v,p,h,ar,oc,och] = lastPersistArgsRef.current;
-    persist(v,p,h,ar,oc,och);
+    const [v,p,h,ar,oc,och,vat] = lastPersistArgsRef.current;
+    persist(v,p,h,ar,oc,och,vat);
   }
   function save(v,p,h,a){setVhl(v);setPrets(p);setHidden(h);if(a!==undefined)setArchived(a);persist(v,p,h,a);}
 
@@ -746,6 +768,22 @@ function App(){
     });
   }
 
+  function addVehiculeAttendu(texte){
+    if(!texte||!texte.trim())return;
+    setVehiculesAttendus(prev=>{
+      const next=[...prev,{id:Date.now().toString()+Math.random().toString(36).slice(2,6),parc:parcActif,texte:texte.trim(),dateAjout:tISO}];
+      persist(vhl,prets,hidden,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+  function delVehiculeAttendu(id){
+    setVehiculesAttendus(prev=>{
+      const next=prev.filter(x=>x.id!==id);
+      persist(vhl,prets,hidden,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+
   function addMonths(iso,n){
     const d=parseD(iso);
     d.setMonth(d.getMonth()+n);
@@ -753,6 +791,8 @@ function App(){
   }
 
   const OCVS_FIELDS_HISTORIQUE=["modeUtilisation","caCommande","voNr","baseConception","demandeImmat","typeSortie","sousParc","demandeur","lieuLivraison","gestionnaireSsParc","rpv","designationCommerciale","marque","projet","nMoyen","nCtrmq","stadeVh","versionLCDV","options","premiereUtilisation","nomFlotte","nomPremierUtilisateur","parcSsParcClientFinal"];
+  // Champs propres à CHAQUE véhicule/châssis d'une commande OCVS (le reste — CA Commande, demandeur, lieu de livraison, etc. — est partagé par tous les véhicules du même bon)
+  const OCVS_CHAMPS_VEHICULE=["designationCommerciale","marque","projet","nMoyen","nCtrmq","stadeVh","versionLCDV","options","vinComplet","nomPremierUtilisateur","parcSsParcClientFinal"];
 
   function computeFieldHistory(prevHistory,data){
     const next={...prevHistory};
@@ -765,45 +805,51 @@ function App(){
     return next;
   }
 
-  function saveOcvsOrder(data,continuerLot){
-    const dataAvecParc = {...data, parc: data.parc||parcActif};
+  // Édition d'un véhicule déjà enregistré (un seul bon, mode "edit")
+  function saveOcvsOrder(data){
+    const {vehicules:_ignoreVehicules, ...dataSansVehicules} = data;
+    const dataAvecParc = {...dataSansVehicules, parc: data.parc||parcActif};
     const newHistory = computeFieldHistory(ocvsHistoryRef.current, dataAvecParc);
     setOcvsHistory(newHistory);
-    let newBatchId=null;
     setOcvsOrders(prev=>{
-      let next;
-      if(dataAvecParc.id){
-        next = prev.map(o=>o.id===dataAvecParc.id?{...o,...dataAvecParc}:o);
-      }else{
-        const id=Date.now().toString()+Math.random().toString(36).slice(2,6);
-        const dateCommande = dataAvecParc.dateCommande||tISO;
-        const batchId = dataAvecParc.batchId || id;
-        newBatchId = batchId;
-        next = [...prev, {
-          ...dataAvecParc, id, batchId,
-          dateCommande,
-          dateProductionPrevue: addMonths(dateCommande,2),
-          statut:"commande",
-          dateReception:null, conforme:null, commentaire:"", confirmePar:null,
-        }];
-      }
+      const next = prev.map(o=>o.id===dataAvecParc.id?{...o,...dataAvecParc}:o);
       persist(vhl,prets,hidden,undefined,next,newHistory);
       return next;
     });
-    if(continuerLot){
-      // Garder les champs "partagés" (parc, demandeur, mode, CA, etc.), vider les champs spécifiques au véhicule
-      setOcvsForm(f=>({
-        modeUtilisation:f.modeUtilisation, caCommande:f.caCommande, voNr:f.voNr, baseConception:f.baseConception,
-        demandeImmat:f.demandeImmat, typeSortie:f.typeSortie, parc:f.parc, sousParc:f.sousParc,
-        demandeur:f.demandeur, lieuLivraison:f.lieuLivraison, gestionnaireSsParc:f.gestionnaireSsParc, rpv:f.rpv,
-        premiereUtilisation:f.premiereUtilisation, nomFlotte:f.nomFlotte,
-        dateCommande:f.dateCommande, batchId:newBatchId,
-        // champs spécifiques au véhicule → vidés pour la saisie suivante
-        designationCommerciale:"",marque:"",projet:"",nMoyen:"",nCtrmq:"",stadeVh:"",versionLCDV:"",options:"",vinComplet:"",nomPremierUtilisateur:"",parcSsParcClientFinal:"",
-      }));
-    }else{
-      setOcvsModal(null);
-    }
+    setOcvsModal(null);
+  }
+
+  // Création d'un bon OCVS regroupant plusieurs châssis/véhicules en une seule saisie :
+  // champsPartages = valeurs communes à tous les véhicules (CA Commande, demandeur, lieu de livraison, etc.)
+  // vehicules = tableau de blocs {designationCommerciale, marque, projet, nMoyen, nCtrmq, stadeVh, versionLCDV, options, vinComplet, nomPremierUtilisateur, parcSsParcClientFinal}
+  // → tous les véhicules partagent le même N° de commande (caCommande) et le même batchId ; l'export Excel produit une ligne par véhicule.
+  function saveOcvsOrderGroupe(champsPartagesBrut,vehicules){
+    const {vehicules:_ignoreVehicules, ...champsPartages} = champsPartagesBrut;
+    const parc = champsPartages.parc||parcActif;
+    const dateCommande = champsPartages.dateCommande||tISO;
+    const dateProductionPrevue = addMonths(dateCommande,2);
+    const batchId = Date.now().toString()+Math.random().toString(36).slice(2,6);
+    let newHistory = ocvsHistoryRef.current;
+    const nouvellesCommandes = vehicules.map((veh,idx)=>{
+      const merged = {...champsPartages, ...veh, parc};
+      newHistory = computeFieldHistory(newHistory, merged);
+      return {
+        ...merged,
+        id: batchId+"-"+idx+"-"+Math.random().toString(36).slice(2,6),
+        batchId,
+        dateCommande,
+        dateProductionPrevue,
+        statut:"commande",
+        dateReception:null, conforme:null, commentaire:"", confirmePar:null,
+      };
+    });
+    setOcvsHistory(newHistory);
+    setOcvsOrders(prev=>{
+      const next=[...prev,...nouvellesCommandes];
+      persist(vhl,prets,hidden,undefined,next,newHistory);
+      return next;
+    });
+    setOcvsModal(null);
   }
 
   function updateOcvsStatut(id,statut,extra){
@@ -1079,6 +1125,7 @@ function App(){
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
           <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
+          <button onClick={()=>setShowAttendus(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📝 Véhicules attendus</button>
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
@@ -1289,6 +1336,7 @@ function App(){
               <th style={{...ths,width:CW.dateImmat,minWidth:CW.dateImmat}}>Immatriculée le</th>
               <th style={{...ths,width:CW.age,minWidth:CW.age}}>Âge</th>
               <th style={{...ths,width:CW.equipements,minWidth:CW.equipements}}>Finitions/Options</th>
+              <th style={{...ths,width:CW.observations,minWidth:CW.observations}}>Observations</th>
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
               <th style={{...ths,width:CW.vin,minWidth:CW.vin,borderRight:"2px solid #cbd5e1"}}>VIN / Châssis</th>
@@ -1348,6 +1396,7 @@ function App(){
                   <td style={{...td}}><EditCell value={v.dateImmat} onSave={val=>upField(v.id,"dateImmat",val)} type="date"/></td>
                   <td style={{...td,color:"#6b7280",fontSize:10}}>{ageVehicule(v.dateImmat)}</td>
                   <td style={{...td}}><EditCell value={v.equipements} onSave={val=>upField(v.id,"equipements",val)} style={{fontSize:10}}/></td>
+                  <td style={{...td}}><EditCell value={v.observations} onSave={val=>upField(v.id,"observations",val)} style={{fontSize:10}}/></td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
                     <EditCell value={v.event} onSave={val=>upField(v.id,"event",val)} isSelect={true} opts={EVENTS_LIST}
                       style={{fontWeight:800,fontSize:10,color:"#fff",background:ec,borderRadius:4,padding:"1px 5px",display:"inline-block"}}/>
@@ -1739,7 +1788,7 @@ function App(){
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🏭 Commandes OCVS — Parc {parcActif} ({ordersDuParc.length})</div>
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>{setOcvsForm({parc:parcActif,caCommande:OCVS_CA_PARC[parcActif]||""});setOcvsModal({mode:"new"});}}
+                  <button onClick={()=>{setOcvsForm({parc:parcActif,caCommande:OCVS_CA_PARC[parcActif]||"",vehicules:[{}]});setOcvsModal({mode:"new"});}}
                     style={{background:"#0c1a2e",color:"#fff",border:"none",borderRadius:7,padding:"7px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>
                     ＋ Nouvelle commande
                   </button>
@@ -1785,7 +1834,11 @@ function App(){
                                   </div>
                                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                                     <button onClick={()=>exportOcvsExcel(o)} style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,color:"#374151"}}>📥 Bon individuel</button>
-                                    <button onClick={()=>{setOcvsForm(o);setOcvsModal({mode:"edit",id:o.id});}} style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,color:"#374151"}}>✏️ Modifier</button>
+                                    <button onClick={()=>{
+                                      const veh={}; OCVS_CHAMPS_VEHICULE.forEach(k=>veh[k]=o[k]||"");
+                                      setOcvsForm({...o,vehicules:[veh]});
+                                      setOcvsModal({mode:"edit",id:o.id});
+                                    }} style={{padding:"6px 10px",borderRadius:7,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:10,fontWeight:700,color:"#374151"}}>✏️ Modifier</button>
                                     {o.statut==="commande"&&<button onClick={()=>updateOcvsStatut(o.id,"fabrication")} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#fef3c7",cursor:"pointer",fontSize:10,fontWeight:700,color:"#92400e"}}>🏭 Passer en fabrication</button>}
                                     {o.statut==="fabrication"&&<button onClick={()=>updateOcvsStatut(o.id,"livre")} style={{padding:"6px 10px",borderRadius:7,border:"none",background:"#dbeafe",cursor:"pointer",fontSize:10,fontWeight:700,color:"#1e40af"}}>🚚 Marquer livré</button>}
                                     {(o.statut==="livre"||o.statut==="fabrication"||o.statut==="commande")&&<>
@@ -1811,14 +1864,28 @@ function App(){
       {/* MODAL OCVS — FORMULAIRE */}
       {ocvsModal&&(()=>{
         const F=ocvsForm;
+        const vehicules = (F.vehicules&&F.vehicules.length?F.vehicules:[{}]);
         const set=(k)=>(e)=>setOcvsForm(f=>({...f,[k]:e.target.value}));
+        const setVeh=(idx,k)=>(e)=>setOcvsForm(f=>{
+          const list=(f.vehicules&&f.vehicules.length?f.vehicules:[{}]).slice();
+          list[idx]={...list[idx],[k]:e.target.value};
+          return {...f,vehicules:list};
+        });
+        const OCVS_MAX_VEHICULES_PAR_BON=10;
+        const ajouterChassis=()=>setOcvsForm(f=>{
+          const list=(f.vehicules&&f.vehicules.length?f.vehicules:[{}]);
+          if(list.length>=OCVS_MAX_VEHICULES_PAR_BON) return f;
+          return {...f,vehicules:[...list,{}]};
+        });
+        const retirerChassis=(idx)=>setOcvsForm(f=>{
+          const list=(f.vehicules||[{}]).filter((_,i)=>i!==idx);
+          return {...f,vehicules:list.length?list:[{}]};
+        });
         const inpS={width:"100%",padding:"7px 9px",borderRadius:7,border:"1.5px solid #e5e7eb",fontSize:11,outline:"none",fontFamily:"inherit"};
         const lblS={fontSize:9,color:"#6b7280",fontWeight:700,display:"block",marginBottom:3,textTransform:"uppercase"};
-        const REQUIRED=["modeUtilisation","caCommande","parc","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque"];
-        const ctrmqOuVinManquant = !F.nCtrmq && !F.vinComplet; // au moins un des deux requis
+        const REQUIRED=["modeUtilisation","caCommande","parc","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc"];
         const Field=({k,label,ph})=>{
-          const reqConditionnel = (k==="nCtrmq"||k==="vinComplet") && ctrmqOuVinManquant;
-          const req=REQUIRED.includes(k)||reqConditionnel;
+          const req=REQUIRED.includes(k);
           const vide=req&&!F[k];
           const hist=ocvsHistory[k]||[];
           return(
@@ -1826,6 +1893,21 @@ function App(){
               <input type="text" value={F[k]||""} onChange={set(k)} placeholder={ph||""} list={"dl_"+k} autoComplete="off"
                 style={{...inpS,border:vide?"1.5px solid #fca5a5":inpS.border,background:vide?"#fef2f2":"#fff"}}/>
               {hist.length>0&&<datalist id={"dl_"+k}>{hist.map(v=><option key={v} value={v}/>)}</datalist>}
+            </div>
+          );
+        };
+        const REQUIRED_VEH=["designationCommerciale","marque"];
+        const FieldVeh=({idx,veh,k,label,ph})=>{
+          const ctrmqOuVinManquant = !veh.nCtrmq && !veh.vinComplet;
+          const reqConditionnel = (k==="nCtrmq"||k==="vinComplet") && ctrmqOuVinManquant;
+          const req=REQUIRED_VEH.includes(k)||reqConditionnel;
+          const vide=req&&!veh[k];
+          const hist=ocvsHistory[k]||[];
+          return(
+            <div><label style={{...lblS,color:req?"#dc2626":lblS.color}}>{label}{req&&" *"}</label>
+              <input type="text" value={veh[k]||""} onChange={setVeh(idx,k)} placeholder={ph||""} list={"dl_"+k+"_"+idx} autoComplete="off"
+                style={{...inpS,border:vide?"1.5px solid #fca5a5":inpS.border,background:vide?"#fef2f2":"#fff"}}/>
+              {hist.length>0&&<datalist id={"dl_"+k+"_"+idx}>{hist.map(v=><option key={v} value={v}/>)}</datalist>}
             </div>
           );
         };
@@ -1861,60 +1943,110 @@ function App(){
                 <Field k="rpv" label="RPV / responsable suivi vh"/>
               </div>
 
-              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Véhicule</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
-                <Field k="designationCommerciale" label="Désignation commerciale" ph="ex: C3 Aircross"/>
-                <Field k="marque" label="Marque" ph="ex: Citroën"/>
-                <Field k="projet" label="Projet" ph="ex: CC24"/>
-                <Field k="nMoyen" label="N° de Moyen ou OUPLAOP"/>
-                <Field k="nCtrmq" label="N° CTRMQ (ou VIN)"/>
-                <Field k="stadeVh" label="Stade vh" ph="ex: EL1"/>
-                <Field k="versionLCDV" label="Version LCDV"/>
-                <Field k="options" label="Options"/>
-              </div>
-
-              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Autres</div>
+              <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase",marginBottom:6}}>Autres (communes à tous les véhicules du bon)</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-                <Field k="vinComplet" label="VIN complet (17 car., ou N° CTRMQ)"/>
                 <Field k="premiereUtilisation" label="1ère utilisation"/>
                 <Field k="nomFlotte" label="Nom de la flotte"/>
-                <Field k="nomPremierUtilisateur" label="Nom premier utilisateur"/>
-                <Field k="parcSsParcClientFinal" label="parc / ss parc et client final"/>
                 {ocvsModal.mode==="new"&&<div><label style={lblS}>Date de la commande</label><input type="date" value={F.dateCommande||tISO} onChange={set("dateCommande")} style={inpS}/></div>}
               </div>
 
-              {(()=>{
-                const REQUIRED2=["modeUtilisation","caCommande","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc","designationCommerciale","marque"];
-                const fixesOk = REQUIRED2.every(k=>F[k]&&F[k].trim());
-                const ctrmqOuVinOk = (F.nCtrmq&&F.nCtrmq.trim())||(F.vinComplet&&F.vinComplet.trim());
-                const ocvsOk = fixesOk && ctrmqOuVinOk;
-                const manquants = REQUIRED2.filter(k=>!F[k]||!F[k].trim());
-                if(!ctrmqOuVinOk) manquants.push("nCtrmq/vinComplet");
-                const nbDansLot = F.batchId ? ocvsOrders.filter(o=>o.batchId===F.batchId).length : 0;
-                return(<>
-                {nbDansLot>0&&(
-                  <div style={{fontSize:11,color:"#1e40af",background:"#eff6ff",borderRadius:8,padding:"7px 10px",marginBottom:10,fontWeight:600}}>
-                    📦 {nbDansLot} véhicule{nbDansLot>1?"s":""} déjà ajouté{nbDansLot>1?"s":""} à cette demande
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#9ca3af",textTransform:"uppercase"}}>
+                  {ocvsModal.mode==="new"?`Véhicule${vehicules.length>1?"s":""} (${vehicules.length})`:"Véhicule"}
+                </div>
+                {ocvsModal.mode==="new"&&vehicules.length>1&&<span style={{fontSize:10,color:"#4338ca",fontWeight:700}}>📦 bon groupé — même N° de commande pour tous</span>}
+              </div>
+
+              {vehicules.map((veh,idx)=>(
+                <div key={idx} style={{border:"1.5px solid "+(vehicules.length>1?"#e5e7eb":"transparent"),borderRadius:10,padding:vehicules.length>1?10:0,marginBottom:10,background:vehicules.length>1?"#fafafa":"transparent"}}>
+                  {vehicules.length>1&&(
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <span style={{fontSize:10,fontWeight:700,color:"#6b7280"}}>Châssis {idx+1}</span>
+                      <button onClick={()=>retirerChassis(idx)} style={{border:"none",background:"none",cursor:"pointer",fontSize:10,fontWeight:700,color:"#d1d5db"}}>🗑️ Retirer</button>
+                    </div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                    <FieldVeh idx={idx} veh={veh} k="designationCommerciale" label="Désignation commerciale" ph="ex: C3 Aircross"/>
+                    <FieldVeh idx={idx} veh={veh} k="marque" label="Marque" ph="ex: Citroën"/>
+                    <FieldVeh idx={idx} veh={veh} k="projet" label="Projet" ph="ex: CC24"/>
+                    <FieldVeh idx={idx} veh={veh} k="nMoyen" label="N° de Moyen ou OUPLAOP"/>
+                    <FieldVeh idx={idx} veh={veh} k="nCtrmq" label="N° CTRMQ (ou VIN)"/>
+                    <FieldVeh idx={idx} veh={veh} k="stadeVh" label="Stade vh" ph="ex: EL1"/>
+                    <FieldVeh idx={idx} veh={veh} k="versionLCDV" label="Version LCDV"/>
+                    <FieldVeh idx={idx} veh={veh} k="options" label="Options"/>
+                    <FieldVeh idx={idx} veh={veh} k="vinComplet" label="VIN complet (17 car., ou N° CTRMQ)"/>
+                    <FieldVeh idx={idx} veh={veh} k="nomPremierUtilisateur" label="Nom premier utilisateur"/>
+                    <FieldVeh idx={idx} veh={veh} k="parcSsParcClientFinal" label="parc / ss parc et client final"/>
                   </div>
-                )}
-                {!ocvsOk&&manquants.length>0&&(
-                  <div style={{fontSize:10,color:"#dc2626",marginBottom:8,textAlign:"right"}}>Champs obligatoires manquants : {manquants.length}</div>
+                </div>
+              ))}
+
+              {ocvsModal.mode==="new"&&(
+                vehicules.length>=OCVS_MAX_VEHICULES_PAR_BON
+                  ? <div style={{textAlign:"center",fontSize:10,color:"#9ca3af",fontWeight:700,marginBottom:16,padding:"9px",border:"1.5px dashed #e5e7eb",borderRadius:8}}>
+                      Maximum {OCVS_MAX_VEHICULES_PAR_BON} véhicules par bon — au-delà, crée un second bon
+                    </div>
+                  : <button onClick={ajouterChassis} style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #c7d2fe",background:"#f8faff",cursor:"pointer",fontSize:11,fontWeight:700,color:"#4338ca",marginBottom:16}}>
+                      ＋ Ajouter un châssis à ce bon ({vehicules.length}/{OCVS_MAX_VEHICULES_PAR_BON})
+                    </button>
+              )}
+
+              {(()=>{
+                const REQUIRED_PARTAGES=["modeUtilisation","caCommande","demandeur","lieuLivraison","premiereUtilisation","gestionnaireSsParc"];
+                const partagesOk = REQUIRED_PARTAGES.every(k=>F[k]&&F[k].trim());
+                const vehiculesOk = vehicules.every(v=>v.designationCommerciale&&v.designationCommerciale.trim()&&v.marque&&v.marque.trim()&&((v.nCtrmq&&v.nCtrmq.trim())||(v.vinComplet&&v.vinComplet.trim())));
+                const ocvsOk = partagesOk && vehiculesOk;
+                const manquants = REQUIRED_PARTAGES.filter(k=>!F[k]||!F[k].trim());
+                const vehiculesIncomplets = vehicules.filter(v=>!(v.designationCommerciale&&v.designationCommerciale.trim()&&v.marque&&v.marque.trim()&&((v.nCtrmq&&v.nCtrmq.trim())||(v.vinComplet&&v.vinComplet.trim())))).length;
+                return(<>
+                {!ocvsOk&&(manquants.length>0||vehiculesIncomplets>0)&&(
+                  <div style={{fontSize:10,color:"#dc2626",marginBottom:8,textAlign:"right"}}>
+                    Champs obligatoires manquants{manquants.length>0?` (communs : ${manquants.length})`:""}{vehiculesIncomplets>0?` — ${vehiculesIncomplets} véhicule${vehiculesIncomplets>1?"s":""} incomplet${vehiculesIncomplets>1?"s":""}`:""}
+                  </div>
                 )}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button onClick={()=>setOcvsModal(null)} style={{flex:"1 1 100px",padding:"9px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>Annuler</button>
-                {ocvsModal.mode==="new"&&<button onClick={()=>saveOcvsOrder(F,true)}
-                  disabled={!ocvsOk}
-                  style={{flex:"2 1 200px",padding:"9px",borderRadius:8,border:"1.5px solid #0c1a2e",background:"#fff",color:ocvsOk?"#0c1a2e":"#9ca3af",cursor:ocvsOk?"pointer":"not-allowed",fontSize:11,fontWeight:700}}>
-                  ➕ Ajouter un véhicule à cette demande
-                </button>}
-                <button onClick={()=>saveOcvsOrder(ocvsModal.mode==="edit"?{...F,id:ocvsModal.id}:F,false)}
+                <button onClick={()=>ocvsModal.mode==="edit"?saveOcvsOrder({...F,...vehicules[0],id:ocvsModal.id}):saveOcvsOrderGroupe(F,vehicules)}
                   disabled={!ocvsOk}
                   style={{flex:"2 1 200px",padding:"9px",borderRadius:8,border:"none",background:ocvsOk?"#0c1a2e":"#e5e7eb",color:ocvsOk?"#fff":"#9ca3af",cursor:ocvsOk?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
-                  Enregistrer
+                  {ocvsModal.mode==="new"&&vehicules.length>1?`Enregistrer le bon (${vehicules.length} véhicules)`:"Enregistrer"}
                 </button>
                 </div>
                 </>);
               })()}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL VÉHICULES ATTENDUS */}
+      {showAttendus&&(()=>{
+        const listeDuParc = vehiculesAttendus.filter(v=>v.parc===parcActif).sort((a,b)=>b.id.localeCompare(a.id));
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowAttendus(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"90%",maxWidth:600,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>📝 Véhicules attendus — Parc {parcActif}</div>
+                <button onClick={()=>setShowAttendus(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+              <div style={{fontSize:11,color:"#9ca3af",marginBottom:14}}>Notes libres pour les véhicules pas encore arrivés — à cocher/supprimer une fois qu'ils sont bien dans le parc.</div>
+
+              <NouvelleNoteAttendu onAdd={addVehiculeAttendu}/>
+
+              <div style={{overflow:"auto",flex:1,marginTop:14,display:"flex",flexDirection:"column",gap:8}}>
+                {listeDuParc.length===0
+                  ? <div style={{textAlign:"center",color:"#9ca3af",padding:30,fontSize:13}}>Aucun véhicule attendu noté pour ce parc</div>
+                  : listeDuParc.map(v=>(
+                      <div key={v.id} style={{display:"flex",alignItems:"flex-start",gap:10,background:"#f8fafc",borderRadius:10,padding:"10px 12px"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:12,color:"#374151",whiteSpace:"pre-wrap"}}>{v.texte}</div>
+                          <div style={{fontSize:9,color:"#9ca3af",marginTop:4}}>Ajouté le {v.dateAjout.split("-").reverse().join("/")}</div>
+                        </div>
+                        <button onClick={()=>delVehiculeAttendu(v.id)} style={{background:"none",border:"none",color:"#d1d5db",cursor:"pointer",fontSize:13,flexShrink:0}}>🗑️</button>
+                      </div>
+                    ))
+                }
+              </div>
             </div>
           </div>
         );
