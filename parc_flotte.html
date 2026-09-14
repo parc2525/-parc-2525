@@ -966,9 +966,22 @@ function App(){
   function openNew(vid){if(justDraggedRef.current)return;setForm({debut:tISO,fin:tISO,personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});setModal({vid,mode:"new"});}
   function openEdit(vid,pr,e){e.stopPropagation();if(justDraggedRef.current)return;setForm({debut:pr.debut,fin:pr.fin,personne:pr.personne,heureDepart:pr.heureDepart||"",heureRetour:pr.heureRetour||"",kmDepart:pr.kmDepart||"",kmRetour:pr.kmRetour||"",siteDepart:pr.siteDepart||"",siteRetour:pr.siteRetour||""});setModal({vid,mode:"edit",pid:pr.id});}
 
+  function getConflitReservation(vid, debut, fin, excludePid){
+    if(!vid||!debut||!fin) return null;
+    const ex = prets[vid]||[];
+    for(const p of ex){
+      if(p.id===excludePid) continue;
+      if(p.debut < fin && debut < p.fin){
+        return p;
+      }
+    }
+    return null;
+  }
+
   function savePret(){
     if(!form.debut||!form.fin||!form.personne.trim()||form.fin<form.debut)return;
     const vid=modal.vid, ex=prets[vid]||[];
+    if(getConflitReservation(vid, form.debut, form.fin, modal.mode==="edit"?modal.pid:null)) return;
     let up;
     if(modal.mode==="new"){
       up={...prets,[vid]:[...ex,{id:Date.now().toString(),...form,personne:form.personne.trim(),color:BAR_COLORS[ex.length%BAR_COLORS.length]}]};
@@ -1085,7 +1098,8 @@ function App(){
     ["2525","2523","2540","2562","2527","2516"].forEach(p=>{c[p]=vhl.filter(v=>v.parc===p).length;});
     return c;
   },[vhl]);
-  const ok=form.debut&&form.fin&&form.personne.trim()&&form.fin>=form.debut;
+  const conflitActuel = modal ? getConflitReservation(modal.vid, form.debut, form.fin, modal.mode==="edit"?modal.pid:null) : null;
+  const ok=form.debut&&form.fin&&form.personne.trim()&&form.fin>=form.debut&&!conflitActuel;
 
   const ths={padding:"5px 4px",fontSize:9,fontWeight:700,color:"#6b7280",textTransform:"uppercase",letterSpacing:0.3,borderRight:"1px solid #e5e7eb",background:"#f8fafc",whiteSpace:"nowrap",overflow:"hidden",position:"sticky",top:0,zIndex:10};
   const inp={width:"100%",padding:"9px 11px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:13,outline:"none",fontFamily:"inherit",background:"#fafafa"};
@@ -2068,6 +2082,11 @@ function App(){
                   style={{padding:"9px 11px",borderRadius:8,border:"none",background:"#fee2e2",color:"#991b1b",cursor:"pointer",fontSize:11,fontWeight:700,flex:"1 1 auto"}}>
                   ↩️ Annuler retour
                 </button>
+              )}
+              {conflitActuel&&(
+                <div style={{width:"100%",background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:8,padding:"8px 10px",fontSize:11,color:"#b91c1c",fontWeight:600}}>
+                  ⚠️ Conflit : véhicule déjà réservé par <b>{conflitActuel.personne}</b> du {conflitActuel.debut.split("-").reverse().join("/")} au {conflitActuel.fin.split("-").reverse().join("/")}. Modifie les dates pour continuer.
+                </div>
               )}
               <div style={{display:"flex",gap:6,width:"100%"}}>
                 <button onClick={()=>setModal(null)} style={{flex:1,padding:"9px",borderRadius:8,border:"1.5px solid #e5e7eb",background:"#fff",cursor:"pointer",fontSize:11,fontWeight:600}}>Annuler</button>
