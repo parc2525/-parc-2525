@@ -547,6 +547,7 @@ function App(){
   const vehiculesAttendusRef=useRef([]);
   useEffect(()=>{ vehiculesAttendusRef.current=vehiculesAttendus; },[vehiculesAttendus]);
   const [showAttendus,setShowAttendus]=useState(false);
+  const [selectedForLabels,setSelectedForLabels]=useState({});
   const [showOcvs,setShowOcvs]=useState(false);
   const [ocvsModal,setOcvsModal]=useState(null);
   const [ocvsForm,setOcvsForm]=useState({});
@@ -1014,6 +1015,127 @@ function App(){
     return{left:(cs.getDate()-1)*colW+1, width:Math.round((ce-cs)/86400000+1)*colW-3};
   }
 
+  // ===== GÉNÉRATION ÉTIQUETTES DE CLÉS (XLSX avec styles réels, format identique au modèle CLE) =====
+  function colLetterEtq(n){ let s=""; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+  function escXmlEtq(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  async function genEtiquettesXlsx(vehicules){
+    // Styles : 0=vide bordé, 1=modele(gras12,centre), 2=motorisation(9,centre), 3=immat(gras16,centre), 4=couleur(9,droite), 5=vin(11,gauche), 6=parc(14,centre)
+    const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="7">
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><b/><sz val="12"/><name val="Calibri"/></font>
+<font><sz val="9"/><name val="Calibri"/></font>
+<font><b/><sz val="16"/><name val="Calibri"/></font>
+<font><sz val="9"/><name val="Calibri"/></font>
+<font><sz val="11"/><name val="Calibri"/></font>
+<font><sz val="14"/><name val="Calibri"/></font>
+</fonts>
+<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color indexed="64"/></left><right style="thin"><color indexed="64"/></right><top style="thin"><color indexed="64"/></top><bottom style="thin"><color indexed="64"/></bottom></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+<cellXfs count="7">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right"/></xf>
+<xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left"/></xf>
+<xf numFmtId="0" fontId="6" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+</cellXfs>
+</styleSheet>`;
+
+    const rowsMap = {}; // rowNum -> [ {ref,val,style} ]
+    function setCell(r,c,val,style){
+      if(!rowsMap[r]) rowsMap[r]=[];
+      rowsMap[r].push({ref:colLetterEtq(c)+r, val, style});
+    }
+    const merges = [];
+    let maxRow=0, maxCol=0;
+
+    vehicules.forEach((v,i)=>{
+      const blocRow = Math.floor(i/3), blocCol = i%3;
+      const r0 = 1 + blocRow*7; // 6 lignes + 1 vide
+      const c0 = 2 + blocCol*4; // B,F,J (3 colonnes utiles + 1 vide)
+      // Bordure sur tout le bloc (6 lignes x 3 colonnes), même cellules vides
+      for(let dr=0; dr<6; dr++) for(let dc=0; dc<3; dc++){
+        setCell(r0+dr, c0+dc, "", 0);
+      }
+      setCell(r0+0, c0+0, v.modele||"", 1);
+      setCell(r0+1, c0+0, v.moteur||"", 2);
+      setCell(r0+2, c0+0, v.id||"", 3);
+      setCell(r0+3, c0+1, v.couleur||"", 4);
+      setCell(r0+4, c0+0, v.vinSuffix||"", 5);
+      if(v.parc) setCell(r0+4, c0+2, v.parc, 6);
+      merges.push(`${colLetterEtq(c0)}${r0}:${colLetterEtq(c0+2)}${r0}`);
+      merges.push(`${colLetterEtq(c0)}${r0+1}:${colLetterEtq(c0+1)}${r0+1}`);
+      merges.push(`${colLetterEtq(c0)}${r0+2}:${colLetterEtq(c0+2)}${r0+2}`);
+      merges.push(`${colLetterEtq(c0+1)}${r0+3}:${colLetterEtq(c0+2)}${r0+3}`);
+      maxRow = Math.max(maxRow, r0+5);
+      maxCol = Math.max(maxCol, c0+2);
+    });
+
+    const rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
+      const cells = rowsMap[r].map(c=>`<c r="${c.ref}" s="${c.style}" t="inlineStr"><is><t xml:space="preserve">${escXmlEtq(c.val)}</t></is></c>`).join("");
+      return `<row r="${r}">${cells}</row>`;
+    }).join("");
+
+    const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
+
+    // Largeurs de colonnes : 3 colonnes par bloc (14 caractères chacune) + 1 colonne d'espacement (3) entre les blocs
+    const colsArr = [];
+    for(let c=1; c<=maxCol; c++){
+      const posInBloc = (c-2) % 4; // 0,1,2 = colonnes utiles, 3 = espacement
+      colsArr.push(`<col min="${c}" max="${c}" width="${posInBloc===3?3:14}" customWidth="1"/>`);
+    }
+    const colsXml = `<cols>${colsArr.join("")}</cols>`;
+
+    const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+${colsXml}
+<sheetData>${rowsXml}</sheetData>
+${mergeXml}
+</worksheet>`;
+
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`);
+    zip.file("_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+    zip.file("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Etiquettes" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`);
+    zip.file("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`);
+    zip.file("xl/styles.xml", stylesXml);
+    zip.file("xl/worksheets/sheet1.xml", sheetXml);
+
+    const blob = await zip.generateAsync({type:"blob", mimeType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Etiquettes_cles_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 5000);
+  }
+
   function genContrat(v,prExplicite){
     const vp=prets[v.id]||[];
     const pr=prExplicite||vp.find(p=>p.debut<=tISO&&p.fin>=tISO)||vp[vp.length-1];
@@ -1138,6 +1260,21 @@ function App(){
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
           <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
           <button onClick={()=>setShowAttendus(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📝 Véhicules attendus</button>
+          {Object.values(selectedForLabels).some(x=>x)&&(
+            <button onClick={()=>{
+                const ids=Object.keys(selectedForLabels).filter(id=>selectedForLabels[id]);
+                const vehiculesData=ids.map(id=>{
+                  const v=vhl.find(x=>x.id===id);
+                  if(!v) return null;
+                  return {modele:v.modele, moteur:v.moteur, id:v.id, couleur:v.couleur, vinSuffix:(v.vin||"").slice(-8), parc:v.parc};
+                }).filter(Boolean);
+                genEtiquettesXlsx(vehiculesData);
+                setSelectedForLabels({});
+              }}
+              style={{background:"#059669",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
+              🏷️ Générer étiquettes ({Object.values(selectedForLabels).filter(x=>x).length})
+            </button>
+          )}
           <button onClick={()=>setCompactMode(m=>!m)} style={{background:compactMode?"#2563eb":"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>{compactMode?"↔️ Vue détaillée":"↔️ Agrandir calendrier"}</button>
           <label style={{background:"#059669",border:"none",color:"#fff",borderRadius:6,padding:"5px 9px",cursor:"pointer",fontSize:10,fontWeight:700}}>
             📥 Import Excel
@@ -1300,7 +1437,8 @@ function App(){
         <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:"100%",minWidth:(compactMode?CW.immat:FIXED)+days.length*colW}}>
           <thead>
             <tr>
-              <th style={{...ths,width:CW.immat,minWidth:CW.immat,position:"sticky",left:0,top:0,zIndex:12,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>Immat</th>
+              <th style={{...ths,width:32,minWidth:32,position:"sticky",left:0,top:0,zIndex:13,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}></th>
+              <th style={{...ths,width:CW.immat,minWidth:CW.immat,position:"sticky",left:32,top:0,zIndex:12,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>Immat</th>
               {!compactMode&&<>
               <th style={{...ths,width:CW.modele,minWidth:CW.modele}}>Modèle</th>
               <th style={{...ths,width:CW.moteur,minWidth:CW.moteur}}>Moteur</th>
@@ -1334,7 +1472,10 @@ function App(){
               const td={fontSize:10,color:"#374151",borderRight:"1px solid #f1f5f9",height:ROW,background:bg,padding:"0 4px",overflow:"hidden",verticalAlign:"middle"};
               return(
                 <tr key={v.id} style={{height:ROW}}>
-                  <td style={{...td,fontWeight:800,borderRight:"1px solid #e5e7eb",position:"sticky",left:0,zIndex:3,background:bg,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>
+                  <td style={{...td,textAlign:"center",position:"sticky",left:0,zIndex:3,background:bg,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>
+                    <input type="checkbox" checked={!!selectedForLabels[v.id]} onChange={e=>setSelectedForLabels(prev=>({...prev,[v.id]:e.target.checked}))} style={{cursor:"pointer"}}/>
+                  </td>
+                  <td style={{...td,fontWeight:800,borderRight:"1px solid #e5e7eb",position:"sticky",left:32,zIndex:3,background:bg,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}>
                       <span onClick={()=>openNew(v.id)} style={{cursor:"pointer",color:isPret?"#d97706":"#0c1a2e",display:"flex",alignItems:"center",gap:3,flex:1,overflow:"hidden"}}>
                         {isPret&&<span style={{fontSize:7,background:"#fef3c7",color:"#d97706",borderRadius:3,padding:"1px 3px",fontWeight:800,flexShrink:0}}>PRÊT</span>}
