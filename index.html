@@ -493,6 +493,69 @@ function VueGaetan({prets,vhl,tISO,onConfirm}){
   );
 }
 
+function NouvelleDepenseForm({vhlList,parcActif,tISO,onAdd}){
+  const [vehiculeId,setVehiculeId]=useState("");
+  const [categorie,setCategorie]=useState("entretien");
+  const [description,setDescription]=useState("");
+  const [montant,setMontant]=useState("");
+  const [date,setDate]=useState(tISO);
+  const [statutDevis,setStatutDevis]=useState("attente");
+  const [fournisseur,setFournisseur]=useState("");
+
+  function submit(){
+    const m=parseFloat(String(montant).replace(",","."));
+    if(!vehiculeId.trim()||isNaN(m))return;
+    const vRef=vhlList.find(v=>v.id.toUpperCase()===vehiculeId.trim().toUpperCase());
+    onAdd({
+      vehiculeId: vRef?vRef.id:vehiculeId.trim().toUpperCase(),
+      parc: vRef?vRef.parc:parcActif,
+      categorie, description, montant:m, date, statutDevis, fournisseur
+    });
+    setVehiculeId("");setDescription("");setMontant("");setFournisseur("");setStatutDevis("attente");setCategorie("entretien");setDate(tISO);
+  }
+
+  return(
+    <div style={{background:"#f8fafc",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",gap:8}}>
+        <input list="vhl-datalist-dep" value={vehiculeId} onChange={e=>setVehiculeId(e.target.value)}
+          placeholder="Immatriculation véhicule"
+          style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}/>
+        <datalist id="vhl-datalist-dep">
+          {vhlList.map(v=><option key={v.id} value={v.id}>{v.modele}</option>)}
+        </datalist>
+        <select value={categorie} onChange={e=>setCategorie(e.target.value)}
+          style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}>
+          <option value="entretien">Entretien</option>
+          <option value="transport">Transport</option>
+          <option value="divers">Divers</option>
+        </select>
+      </div>
+      <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description"
+        style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}/>
+      <div style={{display:"flex",gap:8}}>
+        <input value={montant} onChange={e=>setMontant(e.target.value)} placeholder="Montant TTC (€)"
+          style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}/>
+        <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+          style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}/>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <input value={fournisseur} onChange={e=>setFournisseur(e.target.value)} placeholder="Fournisseur (ex: Sébastien)"
+          style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}/>
+        <select value={statutDevis} onChange={e=>setStatutDevis(e.target.value)}
+          style={{padding:"8px 10px",borderRadius:8,border:"1.5px solid #e5e7eb",fontSize:12,outline:"none"}}>
+          <option value="attente">Devis en attente</option>
+          <option value="recu">Devis reçu</option>
+          <option value="valide">Devis validé</option>
+        </select>
+      </div>
+      <button onClick={submit} disabled={!vehiculeId.trim()||!montant}
+        style={{padding:"9px",borderRadius:8,border:"none",background:(vehiculeId.trim()&&montant)?"#0c1a2e":"#e5e7eb",color:(vehiculeId.trim()&&montant)?"#fff":"#9ca3af",cursor:(vehiculeId.trim()&&montant)?"pointer":"not-allowed",fontSize:12,fontWeight:700}}>
+        ＋ Ajouter la dépense
+      </button>
+    </div>
+  );
+}
+
 function NouvelleNoteAttendu({onAdd}){
   const [texte,setTexte]=useState("");
   function submit(){
@@ -546,6 +609,10 @@ function App(){
   const [vehiculesAttendus,setVehiculesAttendus]=useState([]);
   const vehiculesAttendusRef=useRef([]);
   useEffect(()=>{ vehiculesAttendusRef.current=vehiculesAttendus; },[vehiculesAttendus]);
+  const [depenses,setDepenses]=useState([]);
+  const depensesRef=useRef([]);
+  useEffect(()=>{ depensesRef.current=depenses; },[depenses]);
+  const [showDepenses,setShowDepenses]=useState(false);
   const [showAttendus,setShowAttendus]=useState(false);
   const [selectedForLabels,setSelectedForLabels]=useState({});
   const [showOcvs,setShowOcvs]=useState(false);
@@ -634,6 +701,7 @@ function App(){
       const ocvsParsed = typeof p.ocvs==="string"?JSON.parse(p.ocvs):(p.ocvs||[]);
       const ocvsHistoryParsed = typeof p.ocvsHistory==="string"?JSON.parse(p.ocvsHistory):(p.ocvsHistory||{});
       const vehiculesAttendusParsed = typeof p.vehiculesAttendus==="string"?JSON.parse(p.vehiculesAttendus):(p.vehiculesAttendus||[]);
+      const depensesParsed = typeof p.depenses==="string"?JSON.parse(p.depenses):(p.depenses||[]);
       // Nettoyage : supprime les doublons éventuels (bug corrigé, nettoie les anciennes données)
       if(archivedParsed&&archivedParsed.length){
         const seen=new Set();
@@ -655,6 +723,7 @@ function App(){
       setOcvsOrders(ocvsParsed);
       setOcvsHistory(ocvsHistoryParsed);
       setVehiculesAttendus(vehiculesAttendusParsed);
+      setDepenses(depensesParsed);
     }
     // Écoute Firebase en temps réel
     try{
@@ -706,13 +775,14 @@ function App(){
     });
   }
 
-  function persist(v,p,h,a,o,oh,va){
+  function persist(v,p,h,a,o,oh,va,dep){
     const ar = a!==undefined ? a : archivedRef.current;
     const oc = o!==undefined ? o : ocvsRef.current;
     const och = oh!==undefined ? oh : ocvsHistoryRef.current;
     const vat = va!==undefined ? va : vehiculesAttendusRef.current;
-    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och,vehiculesAttendus:vat}));}catch(_){}
-    lastPersistArgsRef.current = [v,p,h,ar,oc,och,vat];
+    const dp = dep!==undefined ? dep : depensesRef.current;
+    try{localStorage.setItem(SK,JSON.stringify({vhl:v,prets:p,hidden:h,archived:ar,ocvs:oc,ocvsHistory:och,vehiculesAttendus:vat,depenses:dp}));}catch(_){}
+    lastPersistArgsRef.current = [v,p,h,ar,oc,och,vat,dp];
     setSyncStatus("saving");
     setSyncErrorMsg("");
     let writePromise;
@@ -725,6 +795,7 @@ function App(){
         ocvs: JSON.stringify(oc),
         ocvsHistory: JSON.stringify(och),
         vehiculesAttendus: JSON.stringify(vat),
+        depenses: JSON.stringify(dp),
         updatedAt: Date.now()
       });
     }catch(errSync){
@@ -747,8 +818,8 @@ function App(){
   }
   function retrySync(){
     if(!lastPersistArgsRef.current) return;
-    const [v,p,h,ar,oc,och,vat] = lastPersistArgsRef.current;
-    persist(v,p,h,ar,oc,och,vat);
+    const [v,p,h,ar,oc,och,vat,dp] = lastPersistArgsRef.current;
+    persist(v,p,h,ar,oc,och,vat,dp);
   }
   function save(v,p,h,a){setVhl(v);setPrets(p);setHidden(h);if(a!==undefined)setArchived(a);persist(v,p,h,a);}
 
@@ -781,6 +852,88 @@ function App(){
       persist(vhl,prets,hidden,undefined,undefined,undefined,next);
       return next;
     });
+  }
+
+  function addDepense(dep){
+    setDepenses(prev=>{
+      const next=[...prev,{id:Date.now().toString()+Math.random().toString(36).slice(2,6),...dep}];
+      persist(vhl,prets,hidden,undefined,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+  function updateDepense(id,patch){
+    setDepenses(prev=>{
+      const next=prev.map(d=>d.id===id?{...d,...patch}:d);
+      persist(vhl,prets,hidden,undefined,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+  function delDepense(id){
+    setDepenses(prev=>{
+      const next=prev.filter(d=>d.id!==id);
+      persist(vhl,prets,hidden,undefined,undefined,undefined,undefined,next);
+      return next;
+    });
+  }
+
+  function importDepensesExcel(file){
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      try{
+        const wb=XLSX.read(e.target.result,{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{defval:""});
+        let ajoutes=0, erreurs=0;
+        const newDeps=[];
+        rows.forEach(row=>{
+          const immat=String(row["VEHICULE"]||row["IMMATRICULATION"]||"").trim().toUpperCase();
+          const montant=parseFloat(String(row["MONTANT"]||"").replace(",","."));
+          if(!immat||isNaN(montant)){erreurs++;return;}
+          const vRef=vhl.find(v=>v.id.toUpperCase()===immat);
+          newDeps.push({
+            id:Date.now().toString()+Math.random().toString(36).slice(2,6),
+            vehiculeId: vRef?vRef.id:immat,
+            parc: vRef?vRef.parc:(row["PARC"]||parcActif),
+            categorie: (row["CATEGORIE"]||"divers").toLowerCase(),
+            description: row["DESCRIPTION"]||"",
+            montant,
+            date: row["DATE"]||tISO,
+            statutDevis: (row["STATUT_DEVIS"]||"attente").toLowerCase(),
+            fournisseur: row["FOURNISSEUR"]||""
+          });
+          ajoutes++;
+        });
+        if(newDeps.length){
+          setDepenses(prev=>{
+            const next=[...prev,...newDeps];
+            persist(vhl,prets,hidden,undefined,undefined,undefined,undefined,next);
+            return next;
+          });
+        }
+        alert(`Import terminé : ${ajoutes} dépense(s) ajoutée(s)${erreurs?`, ${erreurs} ligne(s) ignorée(s) (véhicule ou montant manquant)`:""}.`);
+      }catch(err){
+        console.error("Erreur import dépenses:", err);
+        alert("Erreur lors de la lecture du fichier. Vérifie le format (colonnes VEHICULE, MONTANT au minimum).");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function exportDepensesExcel(liste){
+    const data=liste.map(d=>({
+      "VEHICULE": d.vehiculeId,
+      "PARC": d.parc,
+      "CATEGORIE": d.categorie,
+      "DESCRIPTION": d.description,
+      "MONTANT TTC": d.montant,
+      "DATE": d.date?d.date.split("-").reverse().join("/"):"",
+      "STATUT DEVIS": d.statutDevis,
+      "FOURNISSEUR": d.fournisseur||""
+    }));
+    const ws=XLSX.utils.json_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Dépenses");
+    XLSX.writeFile(wb,`Depenses_Parc2525_${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
   function addMonths(iso,n){
@@ -1260,6 +1413,7 @@ ${mergeXml}
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
           <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
           <button onClick={()=>setShowAttendus(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📝 Véhicules attendus</button>
+          <button onClick={()=>setShowDepenses(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>💰 Dépenses</button>
           {Object.values(selectedForLabels).some(x=>x)&&(
             <button onClick={()=>{
                 const ids=Object.keys(selectedForLabels).filter(id=>selectedForLabels[id]);
@@ -2128,6 +2282,60 @@ ${mergeXml}
                 </div>
                 </>);
               })()}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL DÉPENSES */}
+      {showDepenses&&(()=>{
+        const STATUT_LABELS={attente:"⏳ Devis en attente",recu:"📨 Devis reçu",valide:"✅ Devis validé"};
+        const STATUT_COLORS={attente:{bg:"#fef3c7",txt:"#92400e"},recu:{bg:"#dbeafe",txt:"#1e40af"},valide:{bg:"#d1fae5",txt:"#065f46"}};
+        const CAT_LABELS={entretien:"🔧 Entretien",transport:"🚚 Transport",divers:"📌 Divers"};
+        const total=depenses.reduce((s,d)=>s+(d.montant||0),0);
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={()=>setShowDepenses(false)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:24,width:"95%",maxWidth:900,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 30px 80px rgba(0,0,0,0.25)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>💰 Dépenses — Entretien, transport, divers</div>
+                <button onClick={()=>setShowDepenses(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
+              </div>
+              <div style={{fontSize:11,color:"#9ca3af",marginBottom:14}}>Total enregistré : <b style={{color:"#0c1a2e"}}>{total.toLocaleString("fr-FR",{minimumFractionDigits:2})} €</b> sur {depenses.length} dépense(s)</div>
+
+              <NouvelleDepenseForm vhlList={vhl} parcActif={parcActif} tISO={tISO} onAdd={addDepense}/>
+
+              <div style={{display:"flex",gap:8,margin:"12px 0"}}>
+                <label style={{flex:1,padding:"8px 10px",borderRadius:8,border:"1.5px dashed #d1d5db",fontSize:11,textAlign:"center",cursor:"pointer",color:"#6b7280"}}>
+                  📥 Importer un Excel (VEHICULE, MONTANT, CATEGORIE, DESCRIPTION, DATE, STATUT_DEVIS, FOURNISSEUR)
+                  <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importDepensesExcel(e.target.files[0]);e.target.value="";}}/>
+                </label>
+                <button onClick={()=>exportDepensesExcel(depenses)} disabled={depenses.length===0}
+                  style={{padding:"8px 14px",borderRadius:8,border:"none",background:depenses.length?"#059669":"#e5e7eb",color:depenses.length?"#fff":"#9ca3af",cursor:depenses.length?"pointer":"not-allowed",fontSize:11,fontWeight:700}}>
+                  📤 Exporter tout
+                </button>
+              </div>
+
+              <div style={{overflow:"auto",flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                {depenses.length===0
+                  ? <div style={{textAlign:"center",color:"#9ca3af",padding:30,fontSize:13}}>Aucune dépense enregistrée</div>
+                  : [...depenses].sort((a,b)=>(b.date||"").localeCompare(a.date||"")).map(d=>(
+                      <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"#f8fafc",borderRadius:10,padding:"9px 12px"}}>
+                        <div style={{minWidth:80,fontWeight:800,fontSize:12}}>{d.vehiculeId}</div>
+                        <div style={{minWidth:70,fontSize:10,color:"#6b7280"}}>{CAT_LABELS[d.categorie]||d.categorie}</div>
+                        <div style={{flex:1,fontSize:11,color:"#374151"}}>{d.description}</div>
+                        <div style={{fontSize:11,color:"#9ca3af"}}>{d.date?d.date.split("-").reverse().join("/"):""}</div>
+                        <div style={{fontWeight:800,fontSize:12,minWidth:70,textAlign:"right"}}>{(d.montant||0).toLocaleString("fr-FR",{minimumFractionDigits:2})} €</div>
+                        <select value={d.statutDevis} onChange={e=>updateDepense(d.id,{statutDevis:e.target.value})}
+                          style={{fontSize:9,fontWeight:700,borderRadius:5,padding:"3px 6px",border:"none",background:STATUT_COLORS[d.statutDevis]?.bg||"#f3f4f6",color:STATUT_COLORS[d.statutDevis]?.txt||"#374151",cursor:"pointer"}}>
+                          <option value="attente">⏳ En attente</option>
+                          <option value="recu">📨 Reçu</option>
+                          <option value="valide">✅ Validé</option>
+                        </select>
+                        <button onClick={()=>delDepense(d.id)} style={{background:"none",border:"none",color:"#d1d5db",cursor:"pointer",fontSize:13,flexShrink:0}}>🗑️</button>
+                      </div>
+                    ))
+                }
+              </div>
             </div>
           </div>
         );
