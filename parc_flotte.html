@@ -585,8 +585,6 @@ function App(){
   const [vhl,setVhl]=useState(INIT);
   const [prets,setPrets]=useState({});
   const [hidden,setHidden]=useState({});
-  const [vy,setVy]=useState(today.getFullYear());
-  const [vm,setVm]=useState(today.getMonth());
   const [modal,setModal]=useState(null);
   const [form,setForm]=useState({debut:"",fin:"",personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});
   const [addOpen,setAddOpen]=useState(false);
@@ -1097,25 +1095,33 @@ function App(){
   }
   function upField(id,field,val){save(vhl.map(v=>v.id===id?{...v,[field]:val}:v),prets,hidden);}
 
-  const days=useMemo(()=>Array.from({length:daysIn(vy,vm)},(_,i)=>new Date(vy,vm,i+1)),[vy,vm]);
-  const tCol=today.getFullYear()===vy&&today.getMonth()===vm?today.getDate()-1:null;
+  const CAL_RANGE_BEFORE_MONTHS = 2, CAL_RANGE_AFTER_MONTHS = 12;
+  const days=useMemo(()=>{
+    const start = new Date(today.getFullYear(), today.getMonth()-CAL_RANGE_BEFORE_MONTHS, 1);
+    const end = new Date(today.getFullYear(), today.getMonth()+CAL_RANGE_AFTER_MONTHS+1, 0); // dernier jour du mois final
+    const arr=[];
+    for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)) arr.push(new Date(d));
+    return arr;
+  },[]);
+  const tCol=useMemo(()=>days.findIndex(d=>d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth()&&d.getDate()===today.getDate()),[days]);
 
   useEffect(()=>{
-    function recalc(){
-      const el=calWrapRef.current;
-      if(!el||days.length===0)return;
-      const fixedW=compactMode?CW.immat:FIXED;
-      const avail=el.clientWidth-fixedW;
-      const w=Math.max(COL, Math.floor(avail/days.length));
-      setColW(w);
-    }
-    recalc();
-    window.addEventListener("resize",recalc);
-    return ()=>window.removeEventListener("resize",recalc);
-  },[days.length,compactMode]);
+    setColW(COL);
+  },[]);
 
-  function prevM(){if(vm===0){setVm(11);setVy(y=>y-1);}else setVm(m=>m-1);}
-  function nextM(){if(vm===11){setVm(0);setVy(y=>y+1);}else setVm(m=>m+1);}
+  useEffect(()=>{
+    // Positionnement initial sur "aujourd'hui" une fois le calendrier réellement monté (après connexion) et à chaque changement de parc
+    if(!role || role==="gaetan") return;
+    const t=setTimeout(()=>scrollToToday(),150);
+    return ()=>clearTimeout(t);
+  },[role,parcActif]);
+
+  function scrollToToday(){
+    const el=calWrapRef.current;
+    if(!el||tCol<0)return;
+    const fixedW=compactMode?CW.immat:FIXED;
+    el.scrollLeft = Math.max(0, tCol*colW - (el.clientWidth-fixedW)/2);
+  }
 
   function openNew(vid){if(justDraggedRef.current)return;setForm({debut:tISO,fin:tISO,personne:"",heureDepart:"",heureRetour:"",kmDepart:"",kmRetour:"",siteDepart:"",siteRetour:""});setModal({vid,mode:"new"});}
   function openEdit(vid,pr,e){e.stopPropagation();if(justDraggedRef.current)return;setForm({debut:pr.debut,fin:pr.fin,personne:pr.personne,heureDepart:pr.heureDepart||"",heureRetour:pr.heureRetour||"",kmDepart:pr.kmDepart||"",kmRetour:pr.kmRetour||"",siteDepart:pr.siteDepart||"",siteRetour:pr.siteRetour||""});setModal({vid,mode:"edit",pid:pr.id});}
@@ -1161,11 +1167,13 @@ function App(){
   }
 
   function getBar(pr){
-    const ms=new Date(vy,vm,1), me=new Date(vy,vm,days.length);
+    if(days.length===0) return null;
+    const ms=days[0], me=days[days.length-1];
     const ps=parseD(pr.debut), pe=parseD(pr.fin);
     if(!ps||!pe||pe<ms||ps>me)return null;
     const cs=ps<ms?ms:ps, ce=pe>me?me:pe;
-    return{left:(cs.getDate()-1)*colW+1, width:Math.round((ce-cs)/86400000+1)*colW-3};
+    const startIdx=Math.round((cs-ms)/86400000);
+    return{left:startIdx*colW+1, width:Math.round((ce-cs)/86400000+1)*colW-3};
   }
 
   // ===== GÉNÉRATION ÉTIQUETTES DE CLÉS (XLSX avec styles réels, format identique au modèle CLE) =====
@@ -1403,11 +1411,7 @@ ${mergeXml}
           )}
           <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="🔍 Rechercher…"
             style={{padding:"5px 10px",borderRadius:7,border:"none",fontSize:11,outline:"none",background:"rgba(255,255,255,0.12)",color:"#fff",width:140}}/>
-          <div style={{display:"flex",alignItems:"center",gap:2,background:"rgba(255,255,255,0.1)",borderRadius:8,padding:"4px 7px"}}>
-            <button onClick={prevM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>‹</button>
-            <span style={{color:"#fff",fontWeight:700,fontSize:11,minWidth:110,textAlign:"center"}}>{MONTHS[vm]} {vy}</span>
-            <button onClick={nextM} style={{background:"none",border:"none",color:"#fff",cursor:"pointer",fontSize:18,lineHeight:1,padding:"0 3px"}}>›</button>
-          </div>
+          <button onClick={scrollToToday} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>📍 Aujourd'hui</button>
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
@@ -1435,7 +1439,6 @@ ${mergeXml}
             <input type="file" accept=".xlsx,.xls" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importExcel(e.target.files[0]);e.target.value='';}}/>
           </label>
           <button onClick={()=>setRole(null)} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🔒 Déco</button>
-          <button onClick={()=>{setVy(today.getFullYear());setVm(today.getMonth());}} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>Aujourd'hui</button>
           <button onClick={()=>setAddOpen(true)} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"5px 11px",cursor:"pointer",fontSize:11,fontWeight:700}}>＋ Véhicule</button>
         </div>
       </div>
@@ -1608,9 +1611,11 @@ ${mergeXml}
               </>}
               {days.map((d,i)=>{
                 const iT=i===tCol, iW=d.getDay()===0||d.getDay()===6;
+                const isMonthStart = d.getDate()===1 || i===0;
                 return(
-                  <th key={i} style={{...ths,width:colW,minWidth:colW,maxWidth:colW,padding:"3px 0",textAlign:"center",borderRight:iT?"2px solid #2563eb":"1px solid #f1f5f9",borderLeft:iT?"2px solid #2563eb":"none",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
-                    <div style={{fontSize:7,color:iT?"#2563eb":"#9ca3af",lineHeight:1}}>{DS[d.getDay()]}</div>
+                  <th key={i} style={{...ths,width:colW,minWidth:colW,maxWidth:colW,padding:"3px 0",textAlign:"center",top:0,overflow:"visible",zIndex:isMonthStart?10:9,borderRight:iT?"2px solid #2563eb":"1px solid #f1f5f9",borderLeft:isMonthStart?"2px solid #94a3b8":iT?"2px solid #2563eb":"none",background:iT?"#dbeafe":iW?"#f0f0f0":"#f8fafc"}}>
+                    {isMonthStart&&<div style={{position:"absolute",top:1,left:2,fontSize:8,fontWeight:800,color:"#475569",whiteSpace:"nowrap",pointerEvents:"none"}}>{MONTHS[d.getMonth()]} {d.getFullYear()}</div>}
+                    <div style={{fontSize:7,color:iT?"#2563eb":"#9ca3af",lineHeight:1,marginTop:isMonthStart?9:0}}>{DS[d.getDay()]}</div>
                     <div style={{fontSize:9,fontWeight:iT?800:600,color:iT?"#2563eb":iW?"#bbb":"#374151",lineHeight:1.3}}>{d.getDate()}</div>
                   </th>
                 );
