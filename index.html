@@ -237,13 +237,13 @@ const ROLE_PARCS = {
 };
 const RESTRICTED_ROLES = new Set(["nicolas2527","mahisha2562","sylvain2540","fanny2516"]);
 // Modules normalement masques aux roles restreints, rouverts au cas par cas pour certains roles.
-// Nicolas, Mahisha, Sylvain et Fanny recuperent Archive / Statistiques / Commandes OCVS
-// (Mouvements, Vehicules attendus, Depenses, Import Excel et +Vehicule restent masques pour tous les roles restreints).
+// Nicolas, Mahisha, Sylvain et Fanny recuperent Archive / Statistiques / Commandes OCVS / +Vehicule
+// (Mouvements, Vehicules attendus, Depenses et Import Excel restent masques pour tous les roles restreints).
 const EXTRA_MODULES_BY_ROLE = {
-  nicolas2527: new Set(["archive","stats","ocvs"]),
-  mahisha2562: new Set(["archive","stats","ocvs"]),
-  sylvain2540: new Set(["archive","stats","ocvs"]),
-  fanny2516: new Set(["archive","stats","ocvs"]),
+  nicolas2527: new Set(["archive","stats","ocvs","add"]),
+  mahisha2562: new Set(["archive","stats","ocvs","add"]),
+  sylvain2540: new Set(["archive","stats","ocvs","add"]),
+  fanny2516: new Set(["archive","stats","ocvs","add"]),
 };
 const ROLE_LABELS = {
   manager: "Sangaré",
@@ -663,6 +663,7 @@ function App(){
   const canArchive = !isRestricted || (roleExtras && roleExtras.has("archive"));
   const canStats = !isRestricted || (roleExtras && roleExtras.has("stats"));
   const canOcvs = !isRestricted || (roleExtras && roleExtras.has("ocvs"));
+  const canAdd = !isRestricted || (roleExtras && roleExtras.has("add"));
   useEffect(()=>{ if(ROLE_PARCS[role]&&!PARCS_VISIBLES.includes(parcActif)) setParcActif(PARCS_VISIBLES[0]); },[role,parcActif]);
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
@@ -1570,7 +1571,7 @@ ${mergeXml}
           </label>
           )}
           <button onClick={()=>setRole(null)} style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🔒 Déco</button>
-          {!isRestricted && (
+          {canAdd && (
           <button onClick={()=>setAddOpen(true)} style={{background:"#2563eb",border:"none",color:"#fff",borderRadius:6,padding:"5px 11px",cursor:"pointer",fontSize:11,fontWeight:700}}>＋ Véhicule</button>
           )}
         </div>
