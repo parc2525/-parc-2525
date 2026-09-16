@@ -279,9 +279,46 @@ function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function addDaysISO_(iso,n){const d=parseD(iso);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
+const CW={immat:150,km:92,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
+const FIXED_COMPACT=CW.immat+CW.km; // en mode compact, seules les colonnes Immat + Kilométrage restent visibles
 const COL=20, ROW=37;
+// Au-delà de cet écart (km) par rapport au kilométrage de référence, une saisie faite par
+// quelqu'un d'autre que le manager est mise en attente de validation plutôt qu'appliquée directement.
+const KM_SEUIL_VALIDATION=3000;
+
+// Kilométrage de référence d'un véhicule = le plus haut relevé jamais saisi, que ce soit
+// via la case Kilométrage du tableau (v.km) ou via un départ/retour de prêt (kmDepart/kmRetour).
+// Une saisie plus basse (erreur de frappe, ancien relevé) ne fait jamais reculer l'affichage.
+function kmEffectif(v,vp){
+  const nums=[Number(v.km)||0];
+  (vp||[]).forEach(p=>{
+    const kd=Number(p.kmDepart)||0, kr=Number(p.kmRetour)||0;
+    if(kd>0) nums.push(kd);
+    if(kr>0) nums.push(kr);
+  });
+  const m=Math.max(...nums);
+  return m>0?m:null;
+}
+function KmCell({value,effectif,onSave}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState(value||"");
+  const ref=useRef();
+  useEffect(()=>{setVal(value||"");},[value]);
+  useEffect(()=>{if(editing&&ref.current)ref.current.focus();},[editing]);
+  if(!editing) return(
+    <div onClick={e=>{e.stopPropagation();setEditing(true);}} title="Cliquer pour saisir un relevé de kilométrage" style={{cursor:"pointer",minHeight:16,fontWeight:700,fontSize:10,color:effectif?"#0c1a2e":"#d1d5db"}}>
+      {effectif?effectif.toLocaleString("fr-FR")+" km":<span style={{fontStyle:"italic",fontSize:9,color:"#d1d5db"}}>—</span>}
+    </div>
+  );
+  return(
+    <input ref={ref} type="number" inputMode="numeric" value={val} onChange={e=>setVal(e.target.value)}
+      onBlur={()=>{onSave(val);setEditing(false);}}
+      onKeyDown={e=>{if(e.key==="Enter"){onSave(val);setEditing(false);}if(e.key==="Escape")setEditing(false);}}
+      placeholder={effectif?String(effectif):"ex: 12500"}
+      style={{width:"100%",fontSize:10,border:"1.5px solid #3b82f6",borderRadius:4,padding:"1px 4px",background:"#fffbeb",outline:"none",fontFamily:"inherit"}}/>
+  );
+}
 
 function EditCell({value,onSave,isSelect,opts,style={},type="text"}){
   const [editing,setEditing]=useState(false);
@@ -1202,6 +1239,37 @@ function App(){
     else logJournal("Modifier champ",id,field+" : \""+(before?before[field]:"")+"\" → \""+val+"\"");
   }
 
+  // Saisie d'un kilométrage : appliquée directement si l'écart avec le kilométrage de référence
+  // est raisonnable (ou si c'est le manager qui saisit), sinon mise en attente de sa validation.
+  function submitKm(v,valRaw){
+    if(valRaw===""||valRaw===null||valRaw===undefined) return;
+    const val=Number(valRaw);
+    if(isNaN(val)) return;
+    const vpCourant=prets[v.id]||[];
+    const effectifAvant=kmEffectif(v,vpCourant);
+    const ecart=effectifAvant!==null?val-effectifAvant:null;
+    if(role!=="manager" && ecart!==null && ecart>KM_SEUIL_VALIDATION){
+      const pending={value:val,by:role,byLabel:ROLE_LABELS[role]||role||"?",at:Date.now()};
+      save(vhl.map(x=>x.id===v.id?{...x,kmPending:pending}:x),prets,hidden);
+      logJournal("Kilométrage en attente de validation",v.id,val.toLocaleString("fr-FR")+" km (écart +"+ecart.toLocaleString("fr-FR")+" km vs "+effectifAvant.toLocaleString("fr-FR")+" km, saisi par "+pending.byLabel+")");
+    } else {
+      save(vhl.map(x=>x.id===v.id?{...x,km:valRaw,kmPending:null}:x),prets,hidden);
+      logJournal("Kilométrage",v.id,val.toLocaleString("fr-FR")+" km");
+    }
+  }
+  function validateKmPending(v,accept){
+    const pending=v.kmPending;
+    if(!pending) return;
+    if(accept){
+      save(vhl.map(x=>x.id===v.id?{...x,km:String(pending.value),kmPending:null}:x),prets,hidden);
+      logJournal("Kilométrage validé",v.id,pending.value.toLocaleString("fr-FR")+" km (saisi par "+pending.byLabel+")");
+    } else {
+      if(!confirm("Refuser la saisie de "+pending.value.toLocaleString("fr-FR")+" km (saisie par "+pending.byLabel+") ?")) return;
+      save(vhl.map(x=>x.id===v.id?{...x,kmPending:null}:x),prets,hidden);
+      logJournal("Kilométrage refusé",v.id,pending.value.toLocaleString("fr-FR")+" km (saisi par "+pending.byLabel+")");
+    }
+  }
+
   const CAL_RANGE_BEFORE_MONTHS = 2, CAL_RANGE_AFTER_MONTHS = 12;
   const days=useMemo(()=>{
     const start = new Date(today.getFullYear(), today.getMonth()-CAL_RANGE_BEFORE_MONTHS, 1);
@@ -1226,7 +1294,7 @@ function App(){
   function scrollToToday(){
     const el=calWrapRef.current;
     if(!el||tCol<0)return;
-    const fixedW=compactMode?CW.immat:FIXED;
+    const fixedW=compactMode?FIXED_COMPACT:FIXED;
     el.scrollLeft = Math.max(0, tCol*colW - (el.clientWidth-fixedW)/2);
   }
 
@@ -1727,11 +1795,12 @@ ${mergeXml}
         <div ref={calWrapRef} onScroll={onCalScroll} onWheel={onCalWheel}
           onMouseDown={onCalMouseDown} onMouseMove={onCalMouseMove} onMouseUp={onCalMouseUp} onMouseLeave={onCalMouseUp}
           style={{flex:1,overflow:"auto",minHeight:0,cursor:dragRef.current.down?"grabbing":"default"}}>
-        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:"100%",minWidth:(compactMode?CW.immat:FIXED)+days.length*colW}}>
+        <table style={{borderCollapse:"collapse",tableLayout:"fixed",width:"100%",minWidth:(compactMode?FIXED_COMPACT:FIXED)+days.length*colW}}>
           <thead>
             <tr>
               <th style={{...ths,width:32,minWidth:32,position:"sticky",left:0,top:0,zIndex:13,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}></th>
               <th style={{...ths,width:CW.immat,minWidth:CW.immat,position:"sticky",left:32,top:0,zIndex:12,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>Immat</th>
+              <th style={{...ths,width:CW.km,minWidth:CW.km,position:"sticky",left:32+CW.immat,top:0,zIndex:11,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>Kilométrage</th>
               {!compactMode&&<>
               <th style={{...ths,width:CW.modele,minWidth:CW.modele}}>Modèle</th>
               <th style={{...ths,width:CW.moteur,minWidth:CW.moteur}}>Moteur</th>
@@ -1796,6 +1865,18 @@ ${mergeXml}
                         )}
                       </div>
                     </div>
+                  </td>
+                  <td style={{...td,borderRight:"1px solid #e5e7eb",overflow:v.kmPending?"visible":"hidden",position:v.kmPending?"relative":undefined,zIndex:v.kmPending?5:undefined}}>
+                    <KmCell value={v.km} effectif={kmEffectif(v,vp)} onSave={val=>submitKm(v,val)}/>
+                    {v.kmPending&&(
+                      <div style={{marginTop:2,fontSize:8,color:"#d97706",display:"flex",alignItems:"center",gap:3,flexWrap:"wrap"}}>
+                        <span title={"Saisi par "+v.kmPending.byLabel}>⏳ {Number(v.kmPending.value).toLocaleString("fr-FR")} km</span>
+                        {role==="manager"&&(<>
+                          <button onClick={e=>{e.stopPropagation();validateKmPending(v,true);}} title="Valider ce kilométrage" style={{border:"none",background:"#dcfce7",color:"#166534",borderRadius:3,padding:"0 3px",cursor:"pointer",fontWeight:800,fontSize:9,lineHeight:1.4}}>✓</button>
+                          <button onClick={e=>{e.stopPropagation();validateKmPending(v,false);}} title="Refuser ce kilométrage" style={{border:"none",background:"#fee2e2",color:"#991b1b",borderRadius:3,padding:"0 3px",cursor:"pointer",fontWeight:800,fontSize:9,lineHeight:1.4}}>✕</button>
+                        </>)}
+                      </div>
+                    )}
                   </td>
 {!compactMode&&<>
                   <td style={{...td,color:"#1e40af",fontWeight:600}}><EditCell value={v.modele} onSave={val=>upField(v.id,"modele",val)}/></td>
@@ -1872,7 +1953,7 @@ ${mergeXml}
         {/* SCROLLBAR HORIZONTALE TOUJOURS ACCESSIBLE */}
         <div ref={mirrorScrollRef} onScroll={onMirrorScroll}
           style={{flexShrink:0,overflowX:"auto",overflowY:"hidden",height:14,borderTop:"1px solid #e5e7eb",background:"#fafbfc"}}>
-          <div style={{height:1,width:(compactMode?CW.immat:FIXED)+days.length*colW}}/>
+          <div style={{height:1,width:(compactMode?FIXED_COMPACT:FIXED)+days.length*colW}}/>
         </div>
       </div>
 
