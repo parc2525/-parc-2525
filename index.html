@@ -1528,18 +1528,28 @@ ${mergeXml}
   }
   const uParcs=useMemo(()=>["TOUS",...PARCS_VISIBLES],[role]);
   const uEvents=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.event).filter(Boolean))].sort()],[vhl]);
-  const uModeles=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.modele).filter(Boolean))].sort()],[vhl]);
-  const uMoteurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.moteur).filter(Boolean))].sort()],[vhl]);
-  const uFins=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.fin).filter(Boolean))].sort()],[vhl]);
-  const uCouleurs=useMemo(()=>["TOUS",...[...new Set(vhl.map(v=>v.couleur).filter(Boolean))].sort()],[vhl]);
+  // Options de filtres calculées uniquement sur les véhicules du parc actif (ex: 2527 et 2516
+  // ne roulent qu'en DS, les autres parcs qu'en Citroën) — pas sur la flotte entière.
+  const vhlDuParc=useMemo(()=>vhl.filter(v=>v.parc===parcActif),[vhl,parcActif]);
+  const uModeles=useMemo(()=>["TOUS",...[...new Set(vhlDuParc.map(v=>v.modele).filter(Boolean))].sort()],[vhlDuParc]);
+  const uMoteurs=useMemo(()=>["TOUS",...[...new Set(vhlDuParc.map(v=>v.moteur).filter(Boolean))].sort()],[vhlDuParc]);
+  const uFins=useMemo(()=>["TOUS",...[...new Set(vhlDuParc.map(v=>v.fin).filter(Boolean))].sort()],[vhlDuParc]);
+  const uCouleurs=useMemo(()=>["TOUS",...[...new Set(vhlDuParc.map(v=>v.couleur).filter(Boolean))].sort()],[vhlDuParc]);
   const uReservations=useMemo(()=>{
     const s=new Set();
-    Object.values(prets).forEach(vp=>(vp||[]).forEach(p=>{ if(p.personne&&p.personne.trim())s.add(p.personne.trim()); }));
+    const idsDuParc=new Set(vhlDuParc.map(v=>v.id));
+    Object.entries(prets).forEach(([vid,vp])=>{
+      if(!idsDuParc.has(vid)) return;
+      (vp||[]).forEach(p=>{ if(p.personne&&p.personne.trim())s.add(p.personne.trim()); });
+    });
     return ["TOUS",...[...s].sort()];
-  },[prets]);
+  },[prets,vhlDuParc]);
   const [fMoteur,setFMoteur]=useState("TOUS");
   const hasFilter=fEvent!==""||fModele!=="TOUS"||fFin!=="TOUS"||fCouleur!=="TOUS"||fMoteur!=="TOUS"||fReservation!=="TOUS"||srch!=="";
   function resetFilters(){setFEvent("");setFModele("TOUS");setFFin("TOUS");setFCouleur("TOUS");setFMoteur("TOUS");setFReservation("TOUS");setSrch("");}
+  // En changeant de parc, les options de filtres changent (DS vs Citroën) : on efface un filtre
+  // sélectionné qui n'existerait plus dans le nouveau parc, pour éviter un résultat vide silencieux.
+  useEffect(()=>{ resetFilters(); },[parcActif]);
 
   const sq=srch.toLowerCase();
   const visibleBase=vhl.filter(v=>{
