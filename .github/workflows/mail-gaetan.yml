@@ -1,0 +1,30 @@
+
+name: Mail quotidien départs Gaëtan
+ 
+on:
+  schedule:
+    # 8h30 heure de Paris = 6h30 UTC en heure d'été (CEST, mars-octobre)
+    - cron: '30 6 * * 1-5'
+    # 8h30 heure de Paris = 7h30 UTC en heure d'hiver (CET, octobre-mars)
+    - cron: '30 7 * * 1-5'
+  workflow_dispatch:      # permet de déclencher un envoi de test manuellement, à tout moment
+    inputs:
+      force_send:
+        description: "Forcer l'envoi immédiat (ignore le jour et l'heure) — utile pour tester"
+        type: boolean
+        default: true
+ 
+jobs:
+  send-mail:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/mail-gaetan.js
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          FORCE_SEND: ${{ inputs.force_send }}
+ 
