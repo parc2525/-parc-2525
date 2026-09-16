@@ -236,6 +236,11 @@ const ROLE_PARCS = {
   fanny2516: ["2516"],
 };
 const RESTRICTED_ROLES = new Set(["nicolas2527","mahisha2562","sylvain2540","fanny2516"]);
+// Modules normalement masques aux roles restreints, rouverts au cas par cas pour certains roles.
+// Nicolas a demande a recuperer Archive / Statistiques / Commandes OCVS (les autres modules logistiques restent masques).
+const EXTRA_MODULES_BY_ROLE = {
+  nicolas2527: new Set(["archive","stats","ocvs"]),
+};
 const ROLE_LABELS = {
   manager: "Sangaré",
   gaetan: "Gaëtan",
@@ -650,6 +655,10 @@ function App(){
   const [parcActif,setParcActif]=useState("2525");
   const PARCS_VISIBLES = ROLE_PARCS[role] || PARCS_LIST;
   const isRestricted = RESTRICTED_ROLES.has(role);
+  const roleExtras = EXTRA_MODULES_BY_ROLE[role];
+  const canArchive = !isRestricted || (roleExtras && roleExtras.has("archive"));
+  const canStats = !isRestricted || (roleExtras && roleExtras.has("stats"));
+  const canOcvs = !isRestricted || (roleExtras && roleExtras.has("ocvs"));
   useEffect(()=>{ if(ROLE_PARCS[role]&&!PARCS_VISIBLES.includes(parcActif)) setParcActif(PARCS_VISIBLES[0]); },[role,parcActif]);
   const [archived,setArchived]=useState([]);
   const archivedRef=useRef([]);
@@ -1515,11 +1524,19 @@ ${mergeXml}
           <input value={srch} onChange={e=>setSrch(e.target.value)} placeholder="🔍 Rechercher…"
             style={{padding:"5px 10px",borderRadius:7,border:"none",fontSize:11,outline:"none",background:"rgba(255,255,255,0.12)",color:"#fff",width:140}}/>
           <button onClick={scrollToToday} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>📍 Aujourd'hui</button>
-          {!isRestricted && (<>
+          {canArchive && (
           <button onClick={()=>setShowArchive(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🗃️ Archive ({archived.filter(v=>v.parc===parcActif).length})</button>
+          )}
+          {!isRestricted && (
           <button onClick={()=>setShowMouvements(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📋 Mouvements</button>
+          )}
+          {canStats && (
           <button onClick={()=>setShowStats(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📊 Statistiques</button>
+          )}
+          {canOcvs && (
           <button onClick={()=>setShowOcvs(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>🏭 Commandes OCVS</button>
+          )}
+          {!isRestricted && (<>
           <button onClick={()=>setShowAttendus(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>📝 Véhicules attendus</button>
           <button onClick={()=>setShowDepenses(true)} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:"#fff",borderRadius:6,padding:"4px 9px",cursor:"pointer",fontSize:10,fontWeight:600}}>💰 Dépenses</button>
           </>)}
@@ -1574,7 +1591,7 @@ ${mergeXml}
             </div>
           </div>
         ))}
-        {!isRestricted && (
+        {canArchive && (
         <div onClick={()=>setShowArchive(true)} title="Voir les véhicules archivés de ce parc"
           style={{display:"flex",alignItems:"center",gap:7,padding:"6px 12px",borderRadius:10,cursor:"pointer",background:"#fdf4e7",border:"1.5px solid transparent"}}>
           <span style={{fontSize:15}}>🗃️</span>
@@ -1874,7 +1891,7 @@ ${mergeXml}
               <div style={{fontSize:16,fontWeight:800,color:"#0c1a2e"}}>🗃️ Véhicules archivés — Parc {parcActif} ({archivedDuParc.length})</div>
               <button onClick={()=>setShowArchive(false)} style={{background:"#f3f4f6",border:"none",borderRadius:7,width:28,height:28,cursor:"pointer",fontSize:14}}>✕</button>
             </div>
-            <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Total archivé tous parcs confondus : {archived.length}</div>
+            {!isRestricted && <div style={{fontSize:11,color:"#9ca3af",marginBottom:12}}>Total archivé tous parcs confondus : {archived.length}</div>}
             {archivedDuParc.length===0
               ? <div style={{textAlign:"center",color:"#9ca3af",padding:40,fontSize:13}}>Aucun véhicule archivé dans le parc {parcActif}</div>
               : <div style={{overflow:"auto",flex:1}}>
@@ -2090,7 +2107,10 @@ ${mergeXml}
       {/* MODAL STATISTIQUES */}
       {showStats&&(()=>{
         // Calcul des stats par véhicule (actifs + archivés, pour une vision complète de l'historique)
-        const tousVehicules = [...vhl, ...archived.map(v=>({...v,estArchive:true}))];
+        // Pour un rôle restreint, on ne calcule les stats que sur les parcs auxquels il a accès
+        // (même si le sélecteur "Tous les parcs" reste affiché) pour ne jamais exposer les autres parcs.
+        const tousVehicules = [...vhl, ...archived.map(v=>({...v,estArchive:true}))]
+          .filter(v=> !isRestricted || PARCS_VISIBLES.includes(v.parc));
         const statsVeh = tousVehicules.map(v=>{
           const vp = prets[v.id]||[];
           const nbPrets = vp.length;
