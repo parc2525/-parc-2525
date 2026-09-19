@@ -264,13 +264,26 @@ const EV_COLORS = {"2A":"#16a34a","3A":"#2563eb","3B":"#dc2626","1X":"#9333ea","
 
 
 function toISO(d){return d.toISOString().slice(0,10)}
-function ageVehicule(dateImmatISO){
-  if(!dateImmatISO) return "";
+function ageMois(dateImmatISO){
+  if(!dateImmatISO) return null;
   const d=new Date(dateImmatISO+"T00:00:00");
+  if(isNaN(d.getTime())) return null;
   const now=new Date();
   let mois=(now.getFullYear()-d.getFullYear())*12+(now.getMonth()-d.getMonth());
   if(now.getDate()<d.getDate()) mois--;
-  if(mois<0) return "";
+  return mois<0?null:mois;
+}
+const SEUIL_AGE_ALERTE=12, SEUIL_AGE_PREALERTE=10;
+function niveauAge(m){ if(m===null||m===undefined) return "none"; if(m>=SEUIL_AGE_ALERTE) return "alerte"; if(m>=SEUIL_AGE_PREALERTE) return "prealerte"; return "ok"; }
+const NIV_AGE={
+  alerte:   {fg:"#b91c1c",bg:"#fee2e2"},
+  prealerte:{fg:"#b45309",bg:"#fef3c7"},
+  ok:       {fg:"#334155",bg:"transparent"},
+  none:     {fg:"#cbd5e1",bg:"transparent"}
+};
+function ageVehicule(dateImmatISO){
+  const mois=ageMois(dateImmatISO);
+  if(mois===null) return "";
   if(mois<12) return mois+" mois";
   const ans=Math.floor(mois/12), reste=mois%12;
   return reste===0 ? ans+" an"+(ans>1?"s":"") : ans+"a "+reste+"m";
@@ -1936,7 +1949,9 @@ ${mergeXml}
                   <td style={{...td,color:"#7c3aed",fontWeight:600}}><EditCell value={v.fin} onSave={val=>upField(v.id,"fin",val)}/></td>
                   <td style={{...td}}><EditCell value={v.couleur} onSave={val=>upField(v.id,"couleur",val)}/></td>
                   <td style={{...td}}><EditCell value={v.dateImmat} onSave={val=>upField(v.id,"dateImmat",val)} type="date"/></td>
-                  <td style={{...td,color:"#6b7280",fontSize:10}}>{ageVehicule(v.dateImmat)}</td>
+                  <td style={{...td,background:(()=>{const n=niveauAge(ageMois(v.dateImmat));return n==="ok"||n==="none"?"transparent":NIV_AGE[n].bg;})()}}>
+                    <span style={{fontSize:10,fontWeight:(()=>{const n=niveauAge(ageMois(v.dateImmat));return n==="alerte"||n==="prealerte"?800:500;})(),color:NIV_AGE[niveauAge(ageMois(v.dateImmat))].fg}}>{ageVehicule(v.dateImmat)||"—"}</span>
+                  </td>
                   <td style={{...td}}><EditCell value={v.equipements} onSave={val=>upField(v.id,"equipements",val)} style={{fontSize:10}}/></td>
                   <td style={{...td}}><EditCell value={v.observations} onSave={val=>upField(v.id,"observations",val)} style={{fontSize:10}}/></td>
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
