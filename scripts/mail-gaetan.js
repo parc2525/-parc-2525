@@ -3,16 +3,16 @@
 // calcule les départs à J (aujourd'hui / en retard), J-1 et J-2 ouvrés,
 // et envoie un mail récapitulatif via l'API Brevo.
 //
-// Déclenché par GitHub Actions (voir .github/workflows/mail-gaetan.yml).
-// Ne fait rien (exit sans envoi) : le week-end, ou si l'heure locale Paris
-// n'est pas proche de 8h30 (garde-fou contre le double déclenchement été/hiver).
+// Déclenché par GitHub Actions (voir .github/workflows/mail-gaetan.yml), deux fois
+// par jour ouvré (un cron pour l'heure d'été, un pour l'heure d'hiver — GitHub peut
+// retarder ces déclenchements de plusieurs heures, donc on ne se fie plus à l'heure
+// réelle d'exécution). Un seul mail part par jour ouvré : la date du dernier envoi
+// est mémorisée dans Firebase (mailGaetanLastSent), et le script s'arrête net si
+// un mail est déjà parti aujourd'hui.
 
 const FIREBASE_URL = "https://parc-2525-default-rtdb.europe-west1.firebasedatabase.app/parc2525.json";
 const DEST_TO = "gaetan.chalon@stellantis.com";
 const DEST_CC = "bourama.sangare@stellantis.com";
-const TARGET_HOUR_PARIS = 8;
-const TARGET_MINUTE_PARIS = 30;
-const TOLERANCE_MINUTES = 20; // fenêtre d'exécution autour de 8h30, pour absorber les deux cron (été/hiver) + latence GitHub
 
 function parisParts(date) {
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -29,12 +29,6 @@ function parisParts(date) {
     minute: Number(parts.minute),
     weekday: parts.weekday, // "Mon","Tue",...
   };
-}
-
-function isWeekendISO(iso) {
-  const d = new Date(iso + "T12:00:00Z"); // midi UTC pour éviter tout glissement de jour
-  const day = d.getUTCDay(); // 0=dimanche,6=samedi
-  return day === 0 || day === 6;
 }
 
 function addBusinessDaysISO(iso, n) {
@@ -63,20 +57,19 @@ async function main() {
     return;
   }
 
-  const minutesNow = paris.hour * 60 + paris.minute;
-  const minutesTarget = TARGET_HOUR_PARIS * 60 + TARGET_MINUTE_PARIS;
-  if (!forceSend && Math.abs(minutesNow - minutesTarget) > TOLERANCE_MINUTES) {
-    console.log(`Hors fenêtre d'envoi (il est ${paris.hour}h${String(paris.minute).padStart(2,"0")} à Paris, cible 8h30 ±${TOLERANCE_MINUTES}min) — pas d'envoi.`);
-    return;
-  }
-  if (forceSend) console.log("FORCE_SEND actif — envoi immédiat, sans tenir compte du jour/de l'heure.");
-
-  console.log(`Envoi du mail quotidien — ${paris.iso} ${paris.hour}h${String(paris.minute).padStart(2,"0")} (Paris)`);
+  console.log(`Vérification pour le ${paris.iso} (exécuté à ${paris.hour}h${String(paris.minute).padStart(2,"0")} Paris)`);
 
   const res = await fetch(FIREBASE_URL);
   if (!res.ok) throw new Error(`Lecture Firebase échouée : HTTP ${res.status}`);
   const raw = await res.json();
   if (!raw) throw new Error("Réponse Firebase vide.");
+
+  // Déduplication : un seul mail par jour ouvré, quelle que soit l'heure réelle
+  // à laquelle GitHub a fini par déclencher ce run.
+  if (!forceSend && raw.mailGaetanLastSent === paris.iso) {
+    console.log(`Mail déjà envoyé aujourd'hui (${paris.iso}) — pas de renvoi.`);
+    return;
+  }
 
   const vhl = JSON.parse(raw.vhl || "[]");
   const prets = JSON.parse(raw.prets || "{}");
@@ -132,7 +125,7 @@ async function main() {
         ${section("Aujourd'hui", "🚀", aujourdhui)}
         ${section("Demain", "⏭️", demain)}
         ${section("Dans 2 jours ouvrés", "🗓️", dans2joursOuvres, { showDate: true })}
-        <p style="margin-top:20px;font-size:11px;color:#94a3b8;">Mail automatique quotidien (jours ouvrés, 8h30) — Parc 2525.</p>
+        <p style="margin-top:20px;font-size:11px;color:#94a3b8;">Mail automatique quotidien (jours ouvrés) — Parc 2525.</p>
       </div>
     </div>`;
 
@@ -167,6 +160,17 @@ async function main() {
     throw new Error(`Échec d'envoi Brevo : HTTP ${brevoRes.status} — ${body}`);
   }
   console.log("Mail envoyé avec succès.");
+
+  // Marque la date d'envoi pour empêcher un second envoi si l'autre cron
+  // (heure d'été / heure d'hiver) se déclenche aussi aujourd'hui.
+  const markRes = await fetch(FIREBASE_URL.replace(".json", "/mailGaetanLastSent.json"), {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(today),
+  });
+  if (!markRes.ok) {
+    console.error(`Attention : échec de l'enregistrement de la date d'envoi (HTTP ${markRes.status}) — un second envoi est possible aujourd'hui si l'autre cron se déclenche.`);
+  }
 }
 
 main().catch(err => {
