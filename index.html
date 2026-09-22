@@ -1532,27 +1532,32 @@ function App(){
       maxCol = Math.max(maxCol, c0+2);
     });
 
+  const rowHeightsEtq = [16.5,13.5,17.25,13.5,13.5,12.75];
   const rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
      const colNums = Object.keys(rowsMap[r]).map(Number).sort((a,b)=>a-b);
      const cells = colNums.map(cn=>{
        const c = rowsMap[r][cn];
        return `<c r="${c.ref}" s="${c.style}" t="inlineStr"><is><t xml:space="preserve">${escXmlEtq(c.val)}</t></is></c>`;
      }).join("");
-     return `<row r="${r}">${cells}</row>`;
+     const drEtq = (Number(r)-1) % 7;
+     const htAttr = drEtq<rowHeightsEtq.length ? ` ht="${rowHeightsEtq[drEtq]}" customHeight="1"` : "";
+     return `<row r="${r}"${htAttr}>${cells}</row>`;
    }).join("");
 
     const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
 
-    // Largeurs de colonnes : 3 colonnes par bloc (14 caractères chacune) + 1 colonne d'espacement (3) entre les blocs
+    // Largeurs de colonnes exactes du modèle fourni (feuille CLE) : 3 colonnes utiles par bloc + 1 colonne d'espacement
+    const colWidthsEtq = [8, 5.7265625, 8.453125, 7.26953125];
     const colsArr = [];
-    for(let c=1; c<=maxCol; c++){
+    for(let c=2; c<=maxCol; c++){
       const posInBloc = (c-2) % 4; // 0,1,2 = colonnes utiles, 3 = espacement
-      colsArr.push(`<col min="${c}" max="${c}" width="${posInBloc===3?3:14}" customWidth="1"/>`);
+      colsArr.push(`<col min="${c}" max="${c}" width="${colWidthsEtq[posInBloc]}" customWidth="1"/>`);
     }
     const colsXml = `<cols>${colsArr.join("")}</cols>`;
 
     const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetFormatPr defaultRowHeight="14.5"/>
 ${colsXml}
 <sheetData>${rowsXml}</sheetData>
 ${mergeXml}
