@@ -1532,7 +1532,7 @@ function App(){
       maxCol = Math.max(maxCol, c0+2);
     });
 
-  onst rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
+  const rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
      const colNums = Object.keys(rowsMap[r]).map(Number).sort((a,b)=>a-b);
      const cells = colNums.map(cn=>{
        const c = rowsMap[r][cn];
