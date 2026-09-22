@@ -1502,11 +1502,11 @@ function App(){
 </cellXfs>
 </styleSheet>`;
 
-    const rowsMap = {}; // rowNum -> [ {ref,val,style} ]
-    function setCell(r,c,val,style){
-      if(!rowsMap[r]) rowsMap[r]=[];
-      rowsMap[r].push({ref:colLetterEtq(c)+r, val, style});
-    }
+    const rowsMap = {}; // rowNum -> { colNum: {ref,val,style} }
+   function setCell(r,c,val,style){
+     if(!rowsMap[r]) rowsMap[r]={};
+     rowsMap[r][c] = {ref:colLetterEtq(c)+r, val, style};
+   }
     const merges = [];
     let maxRow=0, maxCol=0;
 
@@ -1532,10 +1532,14 @@ function App(){
       maxCol = Math.max(maxCol, c0+2);
     });
 
-    const rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
-      const cells = rowsMap[r].map(c=>`<c r="${c.ref}" s="${c.style}" t="inlineStr"><is><t xml:space="preserve">${escXmlEtq(c.val)}</t></is></c>`).join("");
-      return `<row r="${r}">${cells}</row>`;
-    }).join("");
+  onst rowsXml = Object.keys(rowsMap).sort((a,b)=>a-b).map(r=>{
+     const colNums = Object.keys(rowsMap[r]).map(Number).sort((a,b)=>a-b);
+     const cells = colNums.map(cn=>{
+       const c = rowsMap[r][cn];
+       return `<c r="${c.ref}" s="${c.style}" t="inlineStr"><is><t xml:space="preserve">${escXmlEtq(c.val)}</t></is></c>`;
+     }).join("");
+     return `<row r="${r}">${cells}</row>`;
+   }).join("");
 
     const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map(m=>`<mergeCell ref="${m}"/>`).join("")}</mergeCells>` : "";
 
