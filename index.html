@@ -743,7 +743,20 @@ function App(){
   useEffect(()=>{ vehiculesAttendusRef.current=vehiculesAttendus; },[vehiculesAttendus]);
   const [depenses,setDepenses]=useState([]);
   const depensesRef=useRef([]);
-  useEffect(()=>{ depensesRef.current=depenses; },[depenses]);
+    const [etiquettesOrders,setEtiquettesOrders]=useState([]);
+  const [showEtiquettesManuelles,setShowEtiquettesManuelles]=useState(false);
+  const [etiquetteModal,setEtiquetteModal]=useState(null);
+  const [etiquetteForm,setEtiquetteForm]=useState({});
+  useEffect(()=>{
+    const refEtq = db.ref("parc2525_etiquettes");
+    const cbEtq = snap=>{
+      const arr=[];
+      snap.forEach(child=>{ arr.push({id:child.key,...child.val()}); });
+      setEtiquettesOrders(arr);
+    };
+    refEtq.on("value", cbEtq);
+    return ()=>refEtq.off("value", cbEtq);
+  },[]);
   const [showDepenses,setShowDepenses]=useState(false);
   const [pdfPrefill,setPdfPrefill]=useState(null);
   const [pdfExtracting,setPdfExtracting]=useState(false);
@@ -1256,6 +1269,19 @@ function App(){
       persist(vhl,prets,hidden,undefined,next);
       return next;
     });
+  }
+  function saveEtiquetteBatch(data){
+    const parc = data.parc||parcActif;
+    const {id,...rest} = data;
+    if(id){
+      db.ref("parc2525_etiquettes").child(id).update({...rest,parc});
+    } else {
+      db.ref("parc2525_etiquettes").push({...rest,parc,dateCreation:tISO});
+    }
+    setEtiquetteModal(null);
+  }
+  function delEtiquetteBatch(id){
+    db.ref("parc2525_etiquettes").child(id).remove();
   }
 
   function exportOcvsExcel(order){
