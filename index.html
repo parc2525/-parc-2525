@@ -296,7 +296,7 @@ function parseD(s){return s?new Date(s+"T00:00:00"):null}
 function addDaysISO_(iso,n){const d=parseD(iso);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
 function daysIn(y,m){return new Date(y,m+1,0).getDate()}
 
-const CW={immat:150,km:92,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
+const CW={immat:150,critair:62,km:92,modele:100,moteur:88,fin:50,couleur:104,dateImmat:88,age:70,equipements:130,observations:160,event:52,parc:52,vin:130};
 const FIXED=Object.values(CW).reduce((a,b)=>a+b,0);
 const FIXED_COMPACT=CW.immat+CW.km; // en mode compact, seules les colonnes Immat + Kilométrage restent visibles
 const COL=20, ROW=37;
@@ -1774,6 +1774,10 @@ ${mergeXml}
     if(statutFiltre==="tous")return true;
     const estEnPret=(prets[v.id]||[]).some(p=>p.debut<=tISO&&p.fin>=tISO);
     return statutFiltre==="pret" ? estEnPret : !estEnPret;
+  }).slice().sort((a,b)=>{
+    // Regroupement par modèle (Ami ensemble, C3 ensemble, C5 ensemble…), puis immatriculation dans chaque groupe
+    const m=(a.modele||"").localeCompare(b.modele||"","fr",{numeric:true,sensitivity:"base"});
+    return m!==0?m:String(a.id).localeCompare(String(b.id));
   });
   const hiddenList=vhl.filter(v=>hidden[v.id]);
   const parcCounts=useMemo(()=>{
@@ -2043,6 +2047,7 @@ ${mergeXml}
               <th style={{...ths,width:CW.observations,minWidth:CW.observations}}>Observations</th>
               <th style={{...ths,width:CW.event,minWidth:CW.event}}>Event</th>
               <th style={{...ths,width:CW.parc,minWidth:CW.parc}}>Parc</th>
+              <th style={{...ths,width:CW.critair,minWidth:CW.critair}} title="Vignette Crit'Air physiquement collée sur le véhicule">Crit'Air posé</th>
               <th style={{...ths,width:CW.vin,minWidth:CW.vin,borderRight:"2px solid #cbd5e1"}}>VIN / Châssis</th>
               </>}
               {days.map((d,i)=>{
@@ -2066,17 +2071,17 @@ ${mergeXml}
               const ec=EV_COLORS[v.event]||"#6b7280";
               const td={fontSize:10,color:"#374151",borderRight:"1px solid #f1f5f9",height:ROW,background:bg,padding:"0 4px",overflow:"hidden",verticalAlign:"middle"};
               return(
-                <tr key={v.id} style={{height:ROW}}>
+                <tr key={v.id} style={{height:ROW,borderTop:(ri>0&&(visible[ri-1].modele||"")!==(v.modele||""))?"2px solid #94a3b8":undefined}}>
                   <td style={{...td,textAlign:"center",position:"sticky",left:0,zIndex:3,background:bg,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>
                     {modeDepart
                       ? <input type="checkbox" checked={!!selectedForDepart[v.id]} onChange={e=>setSelectedForDepart(prev=>({...prev,[v.id]:e.target.checked}))} style={{cursor:"pointer"}}/>
                       : <input type="checkbox" checked={!!selectedForLabels[v.id]} onChange={e=>setSelectedForLabels(prev=>({...prev,[v.id]:e.target.checked}))} style={{cursor:"pointer"}}/>}
                   </td>
                   <td style={{...td,fontWeight:800,borderRight:"1px solid #e5e7eb",position:"sticky",left:32,zIndex:3,background:bg,boxShadow:"2px 0 4px rgba(0,0,0,0.04)"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:2}}>
-                      <span onClick={()=>openNew(v.id)} style={{cursor:"pointer",color:isPret?"#d97706":"#0c1a2e",display:"flex",alignItems:"center",gap:3,flex:1,overflow:"hidden"}}>
+                    <div style={{display:"flex",flexDirection:"column",justifyContent:"center",gap:1}}>
+                      <span onClick={()=>openNew(v.id)} style={{cursor:"pointer",color:isPret?"#d97706":"#0c1a2e",display:"flex",alignItems:"center",gap:3}}>
+                        <span style={{whiteSpace:"nowrap",flexShrink:0,fontSize:11}}>{v.id}</span>
                         {isPret&&<span style={{fontSize:7,background:"#fef3c7",color:"#d97706",borderRadius:3,padding:"1px 3px",fontWeight:800,flexShrink:0}}>PRÊT</span>}
-                        <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.id}</span>
                       </span>
                       <div data-interactive="1" style={{display:"flex",gap:1,flexShrink:0,position:"relative"}}>
                         <button onClick={e=>{e.stopPropagation();genContrat(v);}} title="Générer contrat" style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 1px",lineHeight:1}}>📄</button>
@@ -2132,6 +2137,15 @@ ${mergeXml}
                   <td style={{...td,borderRight:"1px solid #e5e7eb"}}>
                     <EditCell value={v.parc} onSave={val=>upField(v.id,"parc",val)} isSelect={true} opts={PARCS_VISIBLES}
                       style={{fontWeight:700,fontSize:10,color:"#3730a3",background:"#e0e7ff",borderRadius:4,padding:"1px 5px",display:"inline-block"}}/>
+                  </td>
+                  <td style={{...td,textAlign:"center",borderRight:"1px solid #e5e7eb"}}>
+                    <button onClick={e=>{e.stopPropagation();upField(v.id,"critairPose",v.critairPose==="oui"?"non":"oui");}}
+                      title="Cliquer pour basculer : vignette Crit'Air posée sur le véhicule ?"
+                      style={{border:"none",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:800,cursor:"pointer",
+                        background:v.critairPose==="oui"?"#dcfce7":v.critairPose==="non"?"#fee2e2":"#f3f4f6",
+                        color:v.critairPose==="oui"?"#166534":v.critairPose==="non"?"#991b1b":"#9ca3af"}}>
+                      {v.critairPose==="oui"?"Oui":v.critairPose==="non"?"Non":"—"}
+                    </button>
                   </td>
                   <td style={{...td,fontFamily:"monospace",fontSize:9,color:"#6b7280",borderRight:"2px solid #cbd5e1"}}>
                     <EditCell value={v.vin} onSave={val=>upField(v.id,"vin",val)} style={{fontFamily:"monospace",fontSize:9}}/>
